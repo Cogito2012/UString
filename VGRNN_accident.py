@@ -132,7 +132,7 @@ def test_all(testdata_loader, model, time=90):
         # ipdb.set_trace()
         with torch.no_grad():
             kld_loss, acc_loss, pred_scores, prior_means, _ = model(batch_xs, batch_ys, graph_edges, hidden_in=None, edge_weights=edge_weights)
-        loss = kld_loss + acc_loss
+        loss = kld_loss + p.loss_weight * acc_loss
 
         loss_val += loss.mean().item()
         loss_kld_val += kld_loss.mean().item()
