@@ -145,7 +145,9 @@ def test_all(testdata_loader, model, time=90):
         # run inference
         with torch.no_grad():
             for t in range(time):
-                pred = model.pred_accident(prior_means[t])  # 10 x 2
+                latent = prior_means[t]
+                latent = latent.view(latent.size(0), -1)
+                pred = model.predictor(latent)  # 10 x 2
                 pred = pred.cpu().numpy() if pred.is_cuda else pred.detach().numpy()
                 pred_frames[:, t] = np.exp(pred[:, 1]) / np.sum(np.exp(pred), axis=1)
         # gather results and ground truth
@@ -160,8 +162,8 @@ def test_all(testdata_loader, model, time=90):
     loss_acc_val /= num_batch
 
     # evaluation
-    all_pred = np.vstack(all_pred)
-    all_labels = np.vstack(all_labels)
+    all_pred = np.vstack((np.vstack(all_pred[:-1]), all_pred[-1]))
+    all_labels = np.hstack((np.hstack(all_labels[:-1]), all_labels[-1]))
     print('----------------------------------')
     print("Starting evaluation...")
     AP = evaluation(all_pred, all_labels, total_time=time)
