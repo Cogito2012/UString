@@ -306,7 +306,7 @@ def test_eval():
         pred_frames = np.zeros((batch_size, num_frames), dtype=np.float32)
         # run inference
         with torch.no_grad():
-            for t in range(num_frames):
+            for t in range(90):
                 latent = prior_means[t]
                 latent = latent.view(latent.size(0), -1)
                 pred = model.predictor(latent)  # 10 x 2
@@ -314,6 +314,9 @@ def test_eval():
                 pred_frames[:, t] = np.exp(pred[:, 1]) / np.sum(np.exp(pred), axis=1)
         label_onehot = batch_ys.cpu()
         labels = np.reshape(label_onehot[:, 1], [batch_size,])
+
+        torch.cuda.synchronize()
+        time_ellapsed = (time.time()-start) / batch_size
 
         # visualize
         if p.visualize:
