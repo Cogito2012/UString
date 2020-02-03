@@ -147,7 +147,7 @@ def test_all(testdata_loader, model, time=90):
             for t in range(time):
                 pred = model.pred_accident(prior_means[t])  # 10 x 2
                 pred = pred.cpu().numpy() if pred.is_cuda else pred.detach().numpy()
-                pred_frames[:, t] = pred[:, 1]
+                pred_frames[:, t] = np.exp(pred[:, 1]) / np.sum(np.exp(pred), axis=1)
         # gather results and ground truth
         all_pred.append(pred_frames)
         label_onehot = batch_ys.cpu()
@@ -253,12 +253,17 @@ def train_eval():
     logger.close()
 
 
-def demo():
+def test_eval():
     data_path = os.path.join(ROOT_PATH, p.data_path, p.dataset)
     # result path
-    result_dir = os.path.join(p.output_dir, p.dataset, 'demo')
+    result_dir = os.path.join(p.output_dir, p.dataset, 'test')
     if not os.path.exists(result_dir):
         os.makedirs(result_dir)
+    if p.visualize:
+        vis_dir = os.path.join(result_dir, 'vis')
+        if not os.path.exists(vis_dir):
+            os.makedirs(vis_dir)
+
 
     # building model
     model = VGRNN(p.feature_dim, p.hidden_dim, p.latent_dim, p.num_rnn, conv=p.conv_type, bias=True)
@@ -266,6 +271,7 @@ def demo():
     model.to(device)
 
     # load the trained model weights
+    assert os.path.exists(p.model_file)
     checkpoint = torch.load(p.model_file)
     model.load_state_dict(checkpoint['model'])
     print('Model weights are loaded.')
@@ -283,9 +289,15 @@ def demo():
     else:
         raise NotImplementedError
     testdata_loader = DataLoader(dataset=test_data, batch_size=p.batch_size, shuffle=False)
+    num_samples = len(test_data)
+    print("Number of testing samples: %d"%(num_samples))
 
+    all_pred, all_labels = [], []
+    print('----------------------------------')
+    print("Starting inference...")
     for i, (batch_xs, batch_ys, graph_edges, edge_weights, toa, detections, video_ids) in enumerate(testdata_loader):
-        # ipdb.set_trace()
+        torch.cuda.synchronize()
+        start = time.time()
         with torch.no_grad():
             _, _, pred_scores, prior_means, _ = model(batch_xs, batch_ys, graph_edges, hidden_in=None, edge_weights=edge_weights)
 
@@ -295,72 +307,96 @@ def demo():
         # run inference
         with torch.no_grad():
             for t in range(num_frames):
-                pred = model.pred_accident(prior_means[t])  # 10 x 2
+                latent = prior_means[t]
+                latent = latent.view(latent.size(0), -1)
+                pred = model.predictor(latent)  # 10 x 2
                 pred = pred.cpu().numpy() if pred.is_cuda else pred.detach().numpy()
                 pred_frames[:, t] = np.exp(pred[:, 1]) / np.sum(np.exp(pred), axis=1)
-        # visualize
         label_onehot = batch_ys.cpu()
         labels = np.reshape(label_onehot[:, 1], [batch_size,])
-        for n in range(batch_size):
-            if labels[n] == 1:
-                # plot the probability predictions
-                plt.figure(figsize=(14, 5))
-                plt.plot(pred_frames[n, :], linewidth=3.0)
-                plt.ylim(0, 1)
-                plt.ylabel('Probability')
-                plt.xlim(0, 100)
-                plt.xlabel('Frame (FPS=20)')
-                plt.grid(True)
-                plt.tight_layout()
-                plt.axvline(x=toa[n], ymax=1.0, linewidth=3.0, color='r', linestyle='--')
-                plt.savefig(os.path.join(result_dir, video_ids[n] + '.png'))
-                # # video/frames files
-                # visualize_on_video(p.data_path, dataset=p.dataset, format='gif')
-                # pos_neg = 'positive' if labels[1] > 0 else 'negative'
-                # video_path = os.path.join(data_path, 'videos', phase, pos_neg, video_ids[n] + '.mp4')
-                # assert os.path.exists(video_path)
-        print('Batch %d visualized.'%(i))
+
+        # visualize
+        if p.visualize:
+            vis_results(pred_frames, toa, labels, vis_dir)
+            print('Batch %d visualized.'%(i))
+            continue
+        # evaluation
+        print("Batch %d processed. Time=%.3f s per video."%(i, time_ellapsed))
+        all_pred.append(pred_frames)
+        all_labels.append(labels)
+
+    # evaluation
+    all_pred = np.vstack((np.vstack(all_pred[:-1]), all_pred[-1]))
+    all_labels = np.hstack((np.hstack(all_labels[:-1]), all_labels[-1]))
+    print('----------------------------------')
+    print("Starting evaluation...")
+    AP = evaluation(all_pred, all_labels, total_time=90)
+    print('----------------------------------')
+
+
+
+def vis_results(pred_frames, toa, labels, vis_dir):
+    for n in range(batch_size):
+        if labels[n] == 1:
+            # plot the probability predictions
+            plt.figure(figsize=(14, 5))
+            plt.plot(pred_frames[n, :], linewidth=3.0)
+            plt.ylim(0, 1)
+            plt.ylabel('Probability')
+            plt.xlim(0, 100)
+            plt.xlabel('Frame (FPS=20)')
+            plt.grid(True)
+            plt.tight_layout()
+            plt.axvline(x=toa[n], ymax=1.0, linewidth=3.0, color='r', linestyle='--')
+            plt.savefig(os.path.join(vis_dir, video_ids[n] + '.png'))
+            # # video/frames files
+            # visualize_on_video(p.data_path, dataset=p.dataset, format='gif')
+            # pos_neg = 'positive' if labels[1] > 0 else 'negative'
+            # video_path = os.path.join(data_path, 'videos', phase, pos_neg, video_ids[n] + '.mp4')
+            # assert os.path.exists(video_path)
 
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--data_path', type=str, default='./data',
                         help='The relative path of dataset.')
-    parser.add_argument('--dataset', type=str, default='a3d', choices=['a3d', 'dad'],
-                        help='The name of dataset. Default: a3d')
-    parser.add_argument('--base_lr', type=float, default=1e-2,
-                        help='The base learning rate. Default: 1e-2')
-    parser.add_argument('--epoch', type=int, default=1000,
-                        help='The number of training epoches. Default: 1000')
+    parser.add_argument('--dataset', type=str, default='dad', choices=['a3d', 'dad'],
+                        help='The name of dataset. Default: dad')
+    parser.add_argument('--base_lr', type=float, default=1e-3,
+                        help='The base learning rate. Default: 1e-3')
+    parser.add_argument('--epoch', type=int, default=200,
+                        help='The number of training epoches. Default: 200')
     parser.add_argument('--batch_size', type=int, default=16,
-                        help='The batch size in training process. Default: 10')
+                        help='The batch size in training process. Default: 16')
     parser.add_argument('--num_rnn', type=int, default=1,
                         help='The number of RNN cells for each timestamp. Default: 1')
     parser.add_argument('--feature_name', type=str, default='VGG16', choices=['VGG16', 'ResNet152', 'C3D', 'I3D', 'TSN'],
                         help='The name of feature embedding methods. Default: VGG16')
     parser.add_argument('--conv_type', type=str, default='GCN', choices=['GCN', 'SAGE', 'GIN'],
                         help='The types of graph convolutional neural networks. Default: GCN')
-    parser.add_argument('--test_iter', type=int, default=10,
+    parser.add_argument('--test_iter', type=int, default=20,
                         help='The number of iteration to perform a evaluation process.')
-    parser.add_argument('--hidden_dim', type=int, default=32,
-                        help='The dimension of hidden states in RNN. Default: 32')
-    parser.add_argument('--latent_dim', type=int, default=16,
-                        help='The dimension of latent space. Default: 16')
+    parser.add_argument('--hidden_dim', type=int, default=128,
+                        help='The dimension of hidden states in RNN. Default: 128')
+    parser.add_argument('--latent_dim', type=int, default=64,
+                        help='The dimension of latent space. Default: 64')
     parser.add_argument('--feature_dim', type=int, default=4096,
                         help='The dimension of node features in graph. Default: 4096')
     parser.add_argument('--loss_func', type=str, default='exp', choices=['exp', 'bernoulli'],
                         help='The functions of loss for accident prediction. Default: exp')
-    parser.add_argument('--loss_weight', type=float, default=0.01,
-                        help='The weighting factor of the two loss functions. Default: 0.01')
-    parser.add_argument('--demo', action='store_true',
-                        help='The demo test state. Default: False')
+    parser.add_argument('--loss_weight', type=float, default=0.1,
+                        help='The weighting factor of the two loss functions. Default: 0.1')
+    parser.add_argument('--phase', type=str, choices=['train', 'test'],
+                        help='The state of running the model. Default: train')
+    parser.add_argument('--visualize', action='store_true',
+                        help='The visualization flag. Default: False')
     parser.add_argument('--model_file', type=str, default='./output/dad/snapshot/vgrnn_model_90.pth',
                         help='The trained VGRNN model file for demo test only.')
     parser.add_argument('--output_dir', type=str, default='./output',
                         help='The directory of src need to save in the training.')
 
     p = parser.parse_args()
-    if p.demo:
-        demo()
+    if p.phase == 'test':
+        test_eval()
     else:
         train_eval()
