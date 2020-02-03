@@ -152,8 +152,8 @@ def test_all(testdata_loader, model, time=90):
                 pred_frames[:, t] = np.exp(pred[:, 1]) / np.sum(np.exp(pred), axis=1)
         # gather results and ground truth
         all_pred.append(pred_frames)
-        label_onehot = batch_ys.cpu()
-        label = np.reshape(label_onehot[:, 1], [batch_size, 1])
+        label_onehot = batch_ys.cpu().numpy()
+        label = np.reshape(label_onehot[:, 1], [batch_size,])
         all_labels.append(label)
 
     num_batch = i + 1
@@ -314,7 +314,7 @@ def test_eval():
                 pred = model.predictor(latent)  # 10 x 2
                 pred = pred.cpu().numpy() if pred.is_cuda else pred.detach().numpy()
                 pred_frames[:, t] = np.exp(pred[:, 1]) / np.sum(np.exp(pred), axis=1)
-        label_onehot = batch_ys.cpu()
+        label_onehot = batch_ys.cpu().numpy()
         labels = np.reshape(label_onehot[:, 1], [batch_size,])
 
         torch.cuda.synchronize()
