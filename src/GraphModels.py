@@ -423,15 +423,15 @@ class AccidentPredictor(nn.Module):
 		
         self.act = act
         self.dropout = dropout
-        self.dense1 = torch.nn.Linear(input_dim, 16)
-        self.dense2 = torch.nn.Linear(16, output_dim)
+        self.dense1 = torch.nn.Linear(input_dim, output_dim)
+        # self.dense2 = torch.nn.Linear(16, output_dim)
         
-        self.reset_parameters()
+        self.reset_parameters(stdv=1e-2)
 	
     def forward(self, x):
-        x = F.dropout(x, self.dropout, training=self.training)
-        x = self.act(self.dense1(x))
-        x = self.dense2(x)
+        # x = F.dropout(x, self.dropout, training=self.training)
+        # x = self.act(self.dense1(x))
+        x = self.dense1(x)
 
         return x
     
@@ -467,7 +467,7 @@ class VGRNN(nn.Module):
 
             self.rnn = graph_gru_gcn(h_dim + h_dim, h_dim, n_layers, bias)
 
-            self.predictor = AccidentPredictor(n_obj * z_dim, 2)
+            self.predictor = AccidentPredictor(z_dim, 2)
             self.ce_loss = torch.nn.CrossEntropyLoss(reduction='none')
 
         elif conv == 'SAGE':
@@ -501,11 +501,14 @@ class VGRNN(nn.Module):
 
 
     def forward(self, x, y, edge_idx_list, hidden_in=None, edge_weights=None):
-
+        """
+        :param x, (batchsize, nFrames, nBoxes, Xdim)
+        """
         kld_loss = 0
         acc_loss = 0
         all_dec, all_prior_mean = [], []
 
+        # import ipdb; ipdb.set_trace()
         if hidden_in is None:
             h = Variable(torch.zeros(self.n_layers, x.size(0), x.size(2), self.h_dim))  # 1 x 10 x 20 x 32
         else:
@@ -526,15 +529,13 @@ class VGRNN(nn.Module):
             prior_std_t = self.prior_std(prior_t)
 
             # sampling and reparameterization
-            z_t = self._reparameterized_sample(enc_mean_t, enc_std_t)
+            z_t = self._reparameterized_sample(enc_mean_t, enc_std_t)  # B x N x dz
             phi_z_t = self.phi_z(z_t)
-
+            
             # decoder
-            # dec_t = self.dec(z_t)
-            dec_t = self.predictor(z_t.view(z_t.size(0), -1))
+            dec_t = self.predictor(torch.mean(z_t, dim=1))  # B x 2
 
             # recurrence
-            # import ipdb; ipdb.set_trace()
             _, h = self.rnn(torch.cat([phi_x_t, phi_z_t], 2), edge_idx_list[:, t], h)
 	
             # computing losses
@@ -550,14 +551,6 @@ class VGRNN(nn.Module):
 
         return kld_loss, acc_loss, all_dec, all_prior_mean, h
 
-
-    def pred_accident(self, z):
-        # scores = AccidentPredictor(act=lambda x: x)(z)
-        z = z.view(z.size(0), -1)
-        acc_model = AccidentPredictor(input_dim=z.size(-1), act=torch.relu)
-        acc_model.to(z.device)
-        scores = acc_model(z)
-        return scores
 
     def dec(self, z):
         outputs = []

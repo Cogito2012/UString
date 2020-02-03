@@ -17,17 +17,33 @@ echo Logging output to "$LOG"
 ## experiments on A3D dataset
 # python VGRNN_accident.py --dataset a3d --batch_size 16  --epoch 200  --test_iter 40 --output_dir ./output2
 
-# experiments on DAD dataset
+## experiments on DAD dataset
+# python VGRNN_accident.py \
+#    --dataset dad \
+#    --base_lr 0.001 \
+#    --batch_size 16 \
+#    --epoch 100  \
+#    --test_iter 20 \
+#    --loss_weight 0.1 \
+#    --hidden_dim 128 \
+#    --latent_dim 64 \
+#    --feature_dim 4096 \
+#    --output_dir ./output
+
+# demo
 python VGRNN_accident.py \
     --dataset dad \
     --base_lr 0.001 \
     --batch_size 16 \
-    --epoch 100  \
+    --epoch 100 \
     --test_iter 20 \
     --loss_weight 0.1 \
     --hidden_dim 128 \
     --latent_dim 64 \
     --feature_dim 4096 \
-    --output_dir ./output
+    --output_dir ./output \
+    --phase test \
+    --model_file ./output/dad/snapshot/vgrnn_model_80.pth
+
 
 echo 'Done!'
