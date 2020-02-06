@@ -12,11 +12,11 @@ import itertools
 
 
 class DADDataset(Dataset):
-    def __init__(self, data_path, phase='training', toTensor=False, device='cuda', vis=False):
+    def __init__(self, data_path, phase='training', toTensor=False, device=torch.device('cuda:0'), vis=False):
         self.data_path = data_path
         self.phase = phase
         self.toTensor = toTensor
-        self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+        self.device = device
         self.vis = vis
 
         filepath = os.path.join(data_path, phase)
@@ -61,11 +61,11 @@ class DADDataset(Dataset):
 
 
 class A3DDataset(Dataset):
-    def __init__(self, data_path, phase='train', toTensor=False, device='cuda', vis=False):
+    def __init__(self, data_path, phase='train', toTensor=False, device=torch.device('cuda:0'), vis=False):
         self.data_path = data_path  # VGRNN/data/a3d/
         self.phase = phase
         self.toTensor = toTensor
-        self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+        self.device = device
         self.vis = vis
 
         self.files_list, self.labels_list = self.read_datalist(data_path, phase)

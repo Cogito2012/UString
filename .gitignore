@@ -1,6 +1,7 @@
+.idea
 data/*
 *.pyc
 logs/
 *output*
 log*
-
+debug_exp.sh
