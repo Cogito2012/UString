@@ -123,7 +123,7 @@ def evaluation(all_pred, all_labels, total_time = 90, vis = False, length = None
 
 
 
-def test_all(testdata_loader, model, time=90):
+def test_all(testdata_loader, model, time=90, gpu_ids=[0]):
     
     all_pred = []
     all_labels = []
@@ -147,7 +147,7 @@ def test_all(testdata_loader, model, time=90):
             for t in range(time):
                 latent = prior_means[t]
                 latent = latent.view(latent.size(0), -1)
-                pred = model.predictor(latent)  # 10 x 2
+                pred = model.module.predictor(latent) if len(gpu_ids)>1 else model.predictor(latent)  # 10 x 2
                 pred = pred.cpu().numpy() if pred.is_cuda else pred.detach().numpy()
                 pred_frames[:, t] = np.exp(pred[:, 1]) / np.sum(np.exp(pred), axis=1)
         # gather results and ground truth
@@ -190,26 +190,32 @@ def train_eval():
         os.makedirs(logs_dir)
     logger = SummaryWriter(logs_dir)
 
+    # gpu options
+    # ipdb.set_trace()
+    gpu_ids = [int(id) for id in p.gpus.split(',')]
+
     # building model
     model = VGRNN(x_dim, h_dim, z_dim, p.num_rnn, conv=p.conv_type, bias=True, loss_func=p.loss_func)
-    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    device = torch.device('cuda:%d'%(gpu_ids[0]) if torch.cuda.is_available() else 'cpu')
     model.to(device)
+    if len(gpu_ids) > 1:
+        model = torch.nn.DataParallel(model, device_ids=gpu_ids)
     model.train() # set the model into training status
     optimizer = torch.optim.Adam(model.parameters(), lr=p.base_lr)
 
     # create data loader
     if p.dataset == 'dad':
         from src.DataLoader import DADDataset
-        train_data = DADDataset(data_path, 'training', toTensor=True, device='cuda')
-        test_data = DADDataset(data_path, 'testing', toTensor=True, device='cuda')
+        train_data = DADDataset(data_path, 'training', toTensor=True, device=device)
+        test_data = DADDataset(data_path, 'testing', toTensor=True, device=device)
     elif p.dataset == 'a3d':
         from src.DataLoader import A3DDataset
-        train_data = A3DDataset(data_path, 'train', toTensor=True, device='cuda')
-        test_data = A3DDataset(data_path, 'test', toTensor=True, device='cuda')
+        train_data = A3DDataset(data_path, 'train', toTensor=True, device=device)
+        test_data = A3DDataset(data_path, 'test', toTensor=True, device=device)
     else:
         raise NotImplementedError
-    traindata_loader = DataLoader(dataset=train_data, batch_size=p.batch_size, shuffle=True)
-    testdata_loader = DataLoader(dataset=test_data, batch_size=p.batch_size, shuffle=True)
+    traindata_loader = DataLoader(dataset=train_data, batch_size=p.batch_size, shuffle=True, drop_last=True)
+    testdata_loader = DataLoader(dataset=test_data, batch_size=int(p.batch_size / len(gpu_ids)), shuffle=True, drop_last=True)
 
     iter_cur = 0
     for k in range(p.epoch):
@@ -219,7 +225,7 @@ def train_eval():
             kld_loss, acc_loss, _, _, hidden_st = model(batch_xs, batch_ys, graph_edges, edge_weights=edge_weights)
 
             loss = kld_loss + p.loss_weight * acc_loss
-            loss.backward()
+            loss.mean().backward()
             optimizer.step()
             
             torch.nn.utils.clip_grad_norm(model.parameters(), 10)
@@ -238,7 +244,7 @@ def train_eval():
             # test and evaluate the model
             if iter_cur % p.test_iter == 0:
                 model.eval()
-                loss_val, loss_kld_val, loss_acc_val, AP = test_all(testdata_loader, model)
+                loss_val, loss_kld_val, loss_acc_val, AP = test_all(testdata_loader, model, time=90, gpu_ids=gpu_ids)
                 model.train()
                 # keep track of validation losses
                 info = {'loss': loss_val, 'loss_kld': loss_kld_val, 'loss_acc': loss_acc_val}
@@ -248,7 +254,7 @@ def train_eval():
         # save model
         model_file = os.path.join(model_dir, 'vgrnn_model_%02d.pth'%(k))
         torch.save({'epoch': k,
-                    'model': model.state_dict(),
+                    'model': model.module.state_dict() if len(gpu_ids)>1 else model.state_dict(),
                     'optimizer': optimizer.state_dict()}, model_file)
         print('Model has been saved as: %s'%(model_file))
 
@@ -266,11 +272,16 @@ def test_eval():
         if not os.path.exists(vis_dir):
             os.makedirs(vis_dir)
 
+    # gpu options
+    # ipdb.set_trace()
+    gpu_ids = [int(id) for id in p.gpus.split(',')]
 
     # building model
     model = VGRNN(p.feature_dim, p.hidden_dim, p.latent_dim, p.num_rnn, conv=p.conv_type, bias=True)
-    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    device = torch.device('cuda:%d'%(gpu_ids[0]) if torch.cuda.is_available() else 'cpu')
     model.to(device)
+    if len(gpu_ids) > 1:
+        model = torch.nn.DataParallel(model, device_ids=gpu_ids)
 
     # load the trained model weights
     assert os.path.exists(p.model_file)
@@ -283,14 +294,14 @@ def test_eval():
     if p.dataset == 'dad':
         from src.DataLoader import DADDataset
         phase = 'testing'
-        test_data = DADDataset(data_path, phase, toTensor=True, device='cuda', vis=True)
+        test_data = DADDataset(data_path, phase, toTensor=True, device=device, vis=True)
     elif p.dataset == 'a3d':
         from src.DataLoader import A3DDataset
         phase = 'test'
-        test_data = A3DDataset(data_path, phase, toTensor=True, device='cuda', vis=True)
+        test_data = A3DDataset(data_path, phase, toTensor=True, device=device, vis=True)
     else:
         raise NotImplementedError
-    testdata_loader = DataLoader(dataset=test_data, batch_size=p.batch_size, shuffle=False)
+    testdata_loader = DataLoader(dataset=test_data, batch_size=p.batch_size, shuffle=False, drop_last=True)
     num_samples = len(test_data)
     print("Number of testing samples: %d"%(num_samples))
 
@@ -391,6 +402,8 @@ if __name__ == '__main__':
                         help='The functions of loss for accident prediction. Default: exp')
     parser.add_argument('--loss_weight', type=float, default=0.1,
                         help='The weighting factor of the two loss functions. Default: 0.1')
+    parser.add_argument('--gpus', type=str, default="0", 
+                        help="The delimited list of GPU IDs separated with comma. Default: '0'.")
     parser.add_argument('--phase', type=str, choices=['train', 'test'],
                         help='The state of running the model. Default: train')
     parser.add_argument('--visualize', action='store_true',

@@ -611,10 +611,11 @@ class VGRNN(nn.Module):
         '''
         # positive example (exp_loss)
         target_cls = target[:, 1]
+        target_cls = target_cls.to(torch.long)
         pos_loss = -torch.mul(torch.exp(-torch.tensor((frames - time - 1) / fps)),
-                              -self.ce_loss(pred, target_cls.to(torch.long)))
+                              -self.ce_loss(pred, target_cls))
         # negative example
-        neg_loss = self.ce_loss(pred, target_cls.to(torch.long))
+        neg_loss = self.ce_loss(pred, target_cls)
 
         loss = torch.mean(torch.add(torch.mul(pos_loss, target[:, 1]), torch.mul(neg_loss, target[:, 0])))
         return loss
