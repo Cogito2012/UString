@@ -467,7 +467,7 @@ class VGRNN(nn.Module):
 
             self.rnn = graph_gru_gcn(h_dim + h_dim, h_dim, n_layers, bias)
 
-            self.predictor = AccidentPredictor(n_obj * z_dim, 2)
+            self.predictor = AccidentPredictor(n_obj * (z_dim + h_dim), 2)
             self.ce_loss = torch.nn.CrossEntropyLoss(reduction='none')
 
         elif conv == 'SAGE':
@@ -506,7 +506,7 @@ class VGRNN(nn.Module):
         """
         kld_loss = 0
         acc_loss = 0
-        all_dec, all_prior_mean = [], []
+        all_dec, all_prior_mean, all_hidden = [], [], []
 
         # import ipdb; ipdb.set_trace()
         if hidden_in is None:
@@ -533,7 +533,8 @@ class VGRNN(nn.Module):
             phi_z_t = self.phi_z(z_t)
             
             # decoder
-            dec_t = self.predictor(z_t.view(z_t.size(0), -1))  # B x 2
+            embed = torch.cat([z_t, h[-1]], -1).view(z_t.size(0), -1)
+            dec_t = self.predictor(embed)  # B x 2
 
             # recurrence
             _, h = self.rnn(torch.cat([phi_x_t, phi_z_t], 2), edge_idx_list[:, t], h)
@@ -548,8 +549,9 @@ class VGRNN(nn.Module):
 
             all_dec.append(dec_t)
             all_prior_mean.append(prior_mean_t)
+            all_hidden.append(h[-1])
 
-        return kld_loss, acc_loss, all_dec, all_prior_mean, h
+        return kld_loss, acc_loss, all_dec, all_prior_mean, all_hidden
 
 
     def dec(self, z):

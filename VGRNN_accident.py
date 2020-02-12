@@ -131,7 +131,7 @@ def test_all(testdata_loader, model, time=90, gpu_ids=[0]):
     for i, (batch_xs, batch_ys, graph_edges, edge_weights) in enumerate(testdata_loader):
         # ipdb.set_trace()
         with torch.no_grad():
-            kld_loss, acc_loss, pred_scores, prior_means, _ = model(batch_xs, batch_ys, graph_edges, hidden_in=None, edge_weights=edge_weights)
+            kld_loss, acc_loss, pred_scores, prior_means, hiddens = model(batch_xs, batch_ys, graph_edges, hidden_in=None, edge_weights=edge_weights)
         loss = kld_loss + p.loss_weight * acc_loss
 
         loss_val += loss.mean().item()
@@ -146,8 +146,10 @@ def test_all(testdata_loader, model, time=90, gpu_ids=[0]):
         with torch.no_grad():
             for t in range(time):
                 latent = prior_means[t]
-                latent = latent.view(latent.size(0), -1)
-                pred = model.module.predictor(latent) if len(gpu_ids)>1 else model.predictor(latent)  # 10 x 2
+                # latent = latent.view(latent.size(0), -1)
+                h = hiddens[t]
+                embed = torch.cat([latent, h], -1).view(latent.size(0), -1)
+                pred = model.module.predictor(embed) if len(gpu_ids)>1 else model.predictor(embed)  # 10 x 2
                 pred = pred.cpu().numpy() if pred.is_cuda else pred.detach().numpy()
                 pred_frames[:, t] = np.exp(pred[:, 1]) / np.sum(np.exp(pred), axis=1)
         # gather results and ground truth
@@ -215,7 +217,7 @@ def train_eval():
     else:
         raise NotImplementedError
     traindata_loader = DataLoader(dataset=train_data, batch_size=p.batch_size, shuffle=True, drop_last=True)
-    testdata_loader = DataLoader(dataset=test_data, batch_size=int(p.batch_size / len(gpu_ids)), shuffle=True, drop_last=True)
+    testdata_loader = DataLoader(dataset=test_data, batch_size=p.batch_size, shuffle=True, drop_last=True)
 
     iter_cur = 0
     for k in range(p.epoch):
@@ -226,9 +228,10 @@ def train_eval():
 
             loss = kld_loss + p.loss_weight * acc_loss
             loss.mean().backward()
-            optimizer.step()
             
             torch.nn.utils.clip_grad_norm(model.parameters(), 10)
+            optimizer.step()
+            
             
             print('----------------------------------')
             print('epoch: %d, iter: %d' % (k, iter_cur))
@@ -335,7 +338,7 @@ def test_eval():
         if p.visualize:
             vis_results(pred_frames, toa, labels, vis_dir)
             print('Batch %d visualized.'%(i))
-            continue
+            # continue
         # evaluation
         print("Batch %d processed. Time=%.3f s per video."%(i, time_ellapsed))
         all_pred.append(pred_frames)
