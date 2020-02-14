@@ -315,7 +315,7 @@ def test_eval():
         torch.cuda.synchronize()
         start = time.time()
         with torch.no_grad():
-            _, _, pred_scores, prior_means, _ = model(batch_xs, batch_ys, graph_edges, hidden_in=None, edge_weights=edge_weights)
+            _, _, pred_scores, prior_means, hiddens = model(batch_xs, batch_ys, graph_edges, hidden_in=None, edge_weights=edge_weights)
 
         num_frames = batch_xs.size()[1]
         batch_size = batch_xs.size()[0]
@@ -324,8 +324,11 @@ def test_eval():
         with torch.no_grad():
             for t in range(90):
                 latent = prior_means[t]
-                latent = latent.view(latent.size(0), -1)
-                pred = model.predictor(latent)  # 10 x 2
+                # latent = latent.view(latent.size(0), -1)
+                # pred = model.predictor(latent)  # 10 x 2
+                h = hiddens[t]
+                embed = torch.cat([latent, h], -1).view(latent.size(0), -1)
+                pred = model.module.predictor(embed) if len(gpu_ids)>1 else model.predictor(embed)  # 10 x 2
                 pred = pred.cpu().numpy() if pred.is_cuda else pred.detach().numpy()
                 pred_frames[:, t] = np.exp(pred[:, 1]) / np.sum(np.exp(pred), axis=1)
         label_onehot = batch_ys.cpu().numpy()
@@ -336,7 +339,7 @@ def test_eval():
 
         # visualize
         if p.visualize:
-            vis_results(pred_frames, toa, labels, vis_dir)
+            vis_results(pred_frames, toa, labels, video_ids, vis_dir)
             print('Batch %d visualized.'%(i))
             # continue
         # evaluation
@@ -354,8 +357,8 @@ def test_eval():
 
 
 
-def vis_results(pred_frames, toa, labels, vis_dir):
-    for n in range(batch_size):
+def vis_results(pred_frames, toa, labels, video_ids, vis_dir):
+    for n in range(p.batch_size):
         if labels[n] == 1:
             # plot the probability predictions
             plt.figure(figsize=(14, 5))
@@ -368,6 +371,7 @@ def vis_results(pred_frames, toa, labels, vis_dir):
             plt.tight_layout()
             plt.axvline(x=toa[n], ymax=1.0, linewidth=3.0, color='r', linestyle='--')
             plt.savefig(os.path.join(vis_dir, video_ids[n] + '.png'))
+            plt.close()
             # # video/frames files
             # visualize_on_video(p.data_path, dataset=p.dataset, format='gif')
             # pos_neg = 'positive' if labels[1] > 0 else 'negative'
