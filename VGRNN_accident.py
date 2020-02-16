@@ -181,7 +181,7 @@ def train_eval():
     z_dim = p.latent_dim  # 16
     x_dim = p.feature_dim  # 4096
 
-    data_path = os.path.join(ROOT_PATH, p.data_path, p.dataset)
+    data_path = os.path.join(ROOT_PATH, p.data_path, p.dataset, p.feature_name + '_features')
     # model snapshots
     model_dir = os.path.join(p.output_dir, p.dataset, 'snapshot')
     if not os.path.exists(model_dir):
@@ -231,8 +231,7 @@ def train_eval():
             
             torch.nn.utils.clip_grad_norm(model.parameters(), 10)
             optimizer.step()
-            
-            
+
             print('----------------------------------')
             print('epoch: %d, iter: %d' % (k, iter_cur))
             print('kld_loss = %.6f' % (kld_loss.mean().item()))
@@ -250,9 +249,8 @@ def train_eval():
                 loss_val, loss_kld_val, loss_acc_val, AP = test_all(testdata_loader, model, time=90, gpu_ids=gpu_ids)
                 model.train()
                 # keep track of validation losses
-                info = {'loss': loss_val, 'loss_kld': loss_kld_val, 'loss_acc': loss_acc_val}
+                info = {'loss': loss_val, 'loss_kld': loss_kld_val, 'loss_%s'%(p.loss_func): loss_acc_val}
                 logger.add_scalars("losses/val", info, iter_cur)
-                # logger.add_scalars('accuracy/valAP', AP, iter_cur)
 
         # save model
         model_file = os.path.join(model_dir, 'vgrnn_model_%02d.pth'%(k))
@@ -265,7 +263,7 @@ def train_eval():
 
 
 def test_eval():
-    data_path = os.path.join(ROOT_PATH, p.data_path, p.dataset)
+    data_path = os.path.join(ROOT_PATH, p.data_path, p.dataset, p.feature_name + '_features')
     # result path
     result_dir = os.path.join(p.output_dir, p.dataset, 'test')
     if not os.path.exists(result_dir):
@@ -393,8 +391,8 @@ if __name__ == '__main__':
                         help='The batch size in training process. Default: 16')
     parser.add_argument('--num_rnn', type=int, default=1,
                         help='The number of RNN cells for each timestamp. Default: 1')
-    parser.add_argument('--feature_name', type=str, default='VGG16', choices=['VGG16', 'ResNet152', 'C3D', 'I3D', 'TSN'],
-                        help='The name of feature embedding methods. Default: VGG16')
+    parser.add_argument('--feature_name', type=str, default='vgg16', choices=['vgg16', 'i3d'],
+                        help='The name of feature embedding methods. Default: vgg16')
     parser.add_argument('--conv_type', type=str, default='GCN', choices=['GCN', 'SAGE', 'GIN'],
                         help='The types of graph convolutional neural networks. Default: GCN')
     parser.add_argument('--test_iter', type=int, default=20,
