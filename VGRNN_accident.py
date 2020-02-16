@@ -146,9 +146,11 @@ def test_all(testdata_loader, model, time=90, gpu_ids=[0]):
         with torch.no_grad():
             for t in range(time):
                 latent = prior_means[t]
-                # latent = latent.view(latent.size(0), -1)
-                h = hiddens[t]
-                embed = torch.cat([latent, h], -1).view(latent.size(0), -1)
+                if p.use_hidden:
+                    h = hiddens[t]
+                    embed = torch.cat([latent, h], -1).view(latent.size(0), -1)
+                else:
+                    embed = latent.view(latent.size(0), -1)
                 pred = model.module.predictor(embed) if len(gpu_ids)>1 else model.predictor(embed)  # 10 x 2
                 pred = pred.cpu().numpy() if pred.is_cuda else pred.detach().numpy()
                 pred_frames[:, t] = np.exp(pred[:, 1]) / np.sum(np.exp(pred), axis=1)
@@ -195,14 +197,18 @@ def train_eval():
     # gpu options
     # ipdb.set_trace()
     gpu_ids = [int(id) for id in p.gpus.split(',')]
+    print("Using GPU devices: ", gpu_ids)
+    os.environ['CUDA_VISIBLE_DEVICES'] = p.gpus
+    device = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
 
     # building model
-    model = VGRNN(x_dim, h_dim, z_dim, p.num_rnn, conv=p.conv_type, bias=True, loss_func=p.loss_func)
-    device = torch.device('cuda:%d'%(gpu_ids[0]) if torch.cuda.is_available() else 'cpu')
-    model.to(device)
+    model = VGRNN(x_dim, h_dim, z_dim, p.num_rnn, conv=p.conv_type, bias=True, loss_func=p.loss_func, use_hidden=p.use_hidden)
+
     if len(gpu_ids) > 1:
-        model = torch.nn.DataParallel(model, device_ids=gpu_ids)
+        model = torch.nn.DataParallel(model)
+    model = model.to(device=device)
     model.train() # set the model into training status
+
     optimizer = torch.optim.Adam(model.parameters(), lr=p.base_lr)
 
     # create data loader
@@ -226,7 +232,7 @@ def train_eval():
             optimizer.zero_grad()
             kld_loss, acc_loss, _, _, hidden_st = model(batch_xs, batch_ys, graph_edges, edge_weights=edge_weights)
 
-            loss = kld_loss + p.loss_weight * acc_loss
+            loss = acc_loss + p.loss_weight * kld_loss
             loss.mean().backward()
             
             torch.nn.utils.clip_grad_norm(model.parameters(), 10)
@@ -234,8 +240,8 @@ def train_eval():
 
             print('----------------------------------')
             print('epoch: %d, iter: %d' % (k, iter_cur))
-            print('kld_loss = %.6f' % (kld_loss.mean().item()))
-            print('%s_loss = %.6f (*factor=%.3f)' % (p.loss_func, acc_loss.mean().item(), p.loss_weight))
+            print('kld_loss = %.6f (*factor=%.3f)' % (kld_loss.mean().item(), p.loss_weight))
+            print('%s_loss = %.6f' % (p.loss_func, acc_loss.mean().item()))
             print('loss = %.6f' % (loss.mean().item()))
             info = {'loss': loss.mean().item(),
                     'loss_kld': kld_loss.mean().item(),
@@ -276,21 +282,22 @@ def test_eval():
     # gpu options
     # ipdb.set_trace()
     gpu_ids = [int(id) for id in p.gpus.split(',')]
+    os.environ['CUDA_VISIBLE_DEVICES'] = p.gpus
+    device = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
 
     # building model
-    model = VGRNN(p.feature_dim, p.hidden_dim, p.latent_dim, p.num_rnn, conv=p.conv_type, bias=True)
-    device = torch.device('cuda:%d'%(gpu_ids[0]) if torch.cuda.is_available() else 'cpu')
-    model.to(device)
-    if len(gpu_ids) > 1:
-        model = torch.nn.DataParallel(model, device_ids=gpu_ids)
-
+    model = VGRNN(p.feature_dim, p.hidden_dim, p.latent_dim, p.num_rnn, conv=p.conv_type, bias=True, use_hidden=p.use_hidden)
     # load the trained model weights
     assert os.path.exists(p.model_file)
     checkpoint = torch.load(p.model_file)
     model.load_state_dict(checkpoint['model'])
     print('Model weights are loaded.')
-    model.eval()
 
+    if len(gpu_ids) > 1:
+        model = torch.nn.DataParallel(model)
+    model = model.to(device=device)
+    model.eval()
+    
     # create data loader
     if p.dataset == 'dad':
         from src.DataLoader import DADDataset
@@ -322,10 +329,11 @@ def test_eval():
         with torch.no_grad():
             for t in range(90):
                 latent = prior_means[t]
-                # latent = latent.view(latent.size(0), -1)
-                # pred = model.predictor(latent)  # 10 x 2
-                h = hiddens[t]
-                embed = torch.cat([latent, h], -1).view(latent.size(0), -1)
+                if p.use_hidden:
+                    h = hiddens[t]
+                    embed = torch.cat([latent, h], -1).view(latent.size(0), -1)
+                else:
+                    embed = latent.view(latent.size(0), -1)
                 pred = model.module.predictor(embed) if len(gpu_ids)>1 else model.predictor(embed)  # 10 x 2
                 pred = pred.cpu().numpy() if pred.is_cuda else pred.detach().numpy()
                 pred_frames[:, t] = np.exp(pred[:, 1]) / np.sum(np.exp(pred), axis=1)
@@ -403,6 +411,8 @@ if __name__ == '__main__':
                         help='The dimension of latent space. Default: 64')
     parser.add_argument('--feature_dim', type=int, default=4096,
                         help='The dimension of node features in graph. Default: 4096')
+    parser.add_argument('--use_hidden', action='store_true',
+                        help='If the hidden states are used for decoder. Default: False')
     parser.add_argument('--loss_func', type=str, default='exp', choices=['exp', 'bernoulli'],
                         help='The functions of loss for accident prediction. Default: exp')
     parser.add_argument('--loss_weight', type=float, default=0.1,

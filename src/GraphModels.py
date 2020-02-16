@@ -442,7 +442,7 @@ class AccidentPredictor(nn.Module):
 # VGRNN model
 
 class VGRNN(nn.Module):
-    def __init__(self, x_dim, h_dim, z_dim, n_layers, n_obj=20, eps=1e-10, conv='GCN', bias=False, loss_func='exp'):
+    def __init__(self, x_dim, h_dim, z_dim, n_layers, n_obj=20, eps=1e-10, conv='GCN', bias=False, loss_func='exp', use_hidden=False):
         super(VGRNN, self).__init__()
 
         self.x_dim = x_dim
@@ -451,6 +451,7 @@ class VGRNN(nn.Module):
         self.z_dim = z_dim
         self.n_layers = n_layers
         self.loss_func = loss_func
+        self.use_hidden = use_hidden
         self.n_obj = n_obj
 
         if conv == 'GCN':
@@ -466,8 +467,9 @@ class VGRNN(nn.Module):
             self.prior_std = nn.Sequential(nn.Linear(h_dim, z_dim), nn.Softplus())
 
             self.rnn = graph_gru_gcn(h_dim + h_dim, h_dim, n_layers, bias)
-
-            self.predictor = AccidentPredictor(n_obj * (z_dim + h_dim), 2)
+            
+            dim_encode = z_dim + h_dim if use_hidden else z_dim
+            self.predictor = AccidentPredictor(n_obj * dim_encode, 2)
             self.ce_loss = torch.nn.CrossEntropyLoss(reduction='none')
 
         elif conv == 'SAGE':
@@ -533,7 +535,10 @@ class VGRNN(nn.Module):
             phi_z_t = self.phi_z(z_t)
             
             # decoder
-            embed = torch.cat([z_t, h[-1]], -1).view(z_t.size(0), -1)
+            if self.use_hidden:
+                embed = torch.cat([z_t, h[-1]], -1).view(z_t.size(0), -1)
+            else:
+                embed = z_t.view(z_t.size(0), -1)
             dec_t = self.predictor(embed)  # B x 2
 
             # recurrence

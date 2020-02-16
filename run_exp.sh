@@ -4,6 +4,7 @@ set -e
 
 # source activate py37
 PHASE=$1
+EPOCH=$2
 
 LOG_DIR="./logs"
 if [ ! -d $LOG_DIR ]; then
@@ -21,31 +22,33 @@ echo Logging output to "$LOG"
 # experiments on DAD dataset
 case ${PHASE} in
   train)
-    python VGRNN_accident.py \
+    CUDA_VISIBLE_DEVICES="2,3" python VGRNN_accident.py \
       --dataset dad \
+      --feature_name i3d \
       --phase train \
       --base_lr 0.005 \
-      --batch_size 80 \
-      --epoch 500  \
+      --batch_size 64 \
+      --epoch 200  \
       --test_iter 20 \
       --loss_weight 0.1 \
       --hidden_dim 128 \
       --latent_dim 64 \
-      --feature_dim 4096 \
-      --gpus "0,1,2,3" \
-      --output_dir ./output_h
+      --feature_dim 2048 \
+      --gpus "2,3" \
+      --output_dir ./output_i3d
     ;;
   test)
-    python VGRNN_accident.py \
+    CUDA_VISIBLE_DEVICES="0" python VGRNN_accident.py \
       --dataset dad \
+      --feature_name i3d \
       --phase test \
       --batch_size 16 \
       --hidden_dim 128 \
       --latent_dim 64 \
-      --feature_dim 4096 \
+      --feature_dim 2048 \
       --visualize \
-      --output_dir ./output_h \
-      --model_file ./output_h/dad/snapshot/vgrnn_model_499.pth
+      --output_dir ./output_i3d \
+      --model_file ./output_i3d/dad/snapshot/vgrnn_model_${EPOCH}.pth
     ;;
   *)
     echo "Invalid argument!"

@@ -12,7 +12,7 @@ import itertools
 
 
 class DADDataset(Dataset):
-    def __init__(self, data_path, phase='training', toTensor=False, device=torch.device('cuda:0'), vis=False):
+    def __init__(self, data_path, phase='training', toTensor=False, device=torch.device('cuda'), vis=False):
         self.data_path = data_path
         self.phase = phase
         self.toTensor = toTensor
@@ -27,7 +27,7 @@ class DADDataset(Dataset):
         return data_len
 
     def get_filelist(self, filepath):
-        assert os.path.exists(filepath)
+        assert os.path.exists(filepath), "Directory does not exist: %s"%(filepath)
         file_list = []
         for filename in sorted(os.listdir(filepath)):
             file_list.append(filename)
@@ -61,7 +61,7 @@ class DADDataset(Dataset):
 
 
 class A3DDataset(Dataset):
-    def __init__(self, data_path, phase='train', toTensor=False, device=torch.device('cuda:0'), vis=False):
+    def __init__(self, data_path, phase='train', toTensor=False, device=torch.device('cuda'), vis=False):
         self.data_path = data_path  # VGRNN/data/a3d/
         self.phase = phase
         self.toTensor = toTensor
