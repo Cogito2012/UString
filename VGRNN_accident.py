@@ -95,10 +95,12 @@ def evaluation(all_pred, all_labels, total_time = 90, vis = False, length = None
     for i in range(1,len(new_Precision)):
         AP += (new_Precision[i-1]+new_Precision[i])*(new_Recall[i]-new_Recall[i-1])/2
 
-    print("Average Precision= %.4f, mean Time to accident= %.4f"%(AP, np.mean(new_Time) * 5))
+    mTTA = np.mean(new_Time) * 5
+    print("Average Precision= %.4f, mean Time to accident= %.4f"%(AP, mTTA))
     sort_time = new_Time[np.argsort(new_Recall)]
     sort_recall = np.sort(new_Recall)
-    print("Recall@80%, Time to accident= " +"{:.4}".format(sort_time[np.argmin(np.abs(sort_recall-0.8))] * 5))
+    TTA_R80 = sort_time[np.argmin(np.abs(sort_recall-0.8))] * 5
+    print("Recall@80%, Time to accident= " +"{:.4}".format(TTA_R80))
 
     ### visualize
 
@@ -119,7 +121,7 @@ def evaluation(all_pred, all_labels, total_time = 90, vis = False, length = None
         plt.title('Recall-mean_time' )
         plt.show()
 
-    return AP
+    return AP, mTTA, TTA_R80
 
 
 
@@ -170,7 +172,7 @@ def test_all(testdata_loader, model, time=90, gpu_ids=[0]):
     all_labels = np.hstack((np.hstack(all_labels[:-1]), all_labels[-1]))
     print('----------------------------------')
     print("Starting evaluation...")
-    AP = evaluation(all_pred, all_labels, total_time=time)
+    AP, mTTA, TTA_R80 = evaluation(all_pred, all_labels, total_time=time)
     print('----------------------------------')
     
     return loss_val, loss_kld_val, loss_acc_val, AP
@@ -274,30 +276,20 @@ def test_eval():
     result_dir = os.path.join(p.output_dir, p.dataset, 'test')
     if not os.path.exists(result_dir):
         os.makedirs(result_dir)
+    # visualization results
+    # ipdb.set_trace()
+    p.visualize = False if p.evaluate_all else p.visualize
     if p.visualize:
-        vis_dir = os.path.join(result_dir, 'vis')
+        epoch_str = p.model_file.split("_")[-1].split(".pth")[0]
+        vis_dir = os.path.join(result_dir, 'vis_epoch' + epoch_str)
         if not os.path.exists(vis_dir):
             os.makedirs(vis_dir)
 
     # gpu options
-    # ipdb.set_trace()
     gpu_ids = [int(id) for id in p.gpus.split(',')]
     os.environ['CUDA_VISIBLE_DEVICES'] = p.gpus
     device = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
 
-    # building model
-    model = VGRNN(p.feature_dim, p.hidden_dim, p.latent_dim, p.num_rnn, conv=p.conv_type, bias=True, use_hidden=p.use_hidden)
-    # load the trained model weights
-    assert os.path.exists(p.model_file)
-    checkpoint = torch.load(p.model_file)
-    model.load_state_dict(checkpoint['model'])
-    print('Model weights are loaded.')
-
-    if len(gpu_ids) > 1:
-        model = torch.nn.DataParallel(model)
-    model = model.to(device=device)
-    model.eval()
-    
     # create data loader
     if p.dataset == 'dad':
         from src.DataLoader import DADDataset
@@ -312,6 +304,42 @@ def test_eval():
     testdata_loader = DataLoader(dataset=test_data, batch_size=p.batch_size, shuffle=False, drop_last=True)
     num_samples = len(test_data)
     print("Number of testing samples: %d"%(num_samples))
+    
+    # building model
+    model = VGRNN(p.feature_dim, p.hidden_dim, p.latent_dim, p.num_rnn, conv=p.conv_type, bias=True, use_hidden=p.use_hidden)
+    # start to evaluate
+    if p.evaluate_all:
+        model_dir = os.path.join(p.output_dir, p.dataset, 'snapshot')
+        assert os.path.exists(model_dir)
+        AP_all, mTTA_all, TTA_R80_all = [], [], []
+        modelfiles = sorted(os.listdir(model_dir))
+        for filename in modelfiles:
+            # ipdb.set_trace()
+            epoch_str = filename.split("_")[-1].split(".pth")[0]
+            print("Evaluation for epoch: " + epoch_str)
+            model_file = os.path.join(model_dir, filename)
+            # run model inference
+            AP, mTTA, TTA_R80 = eval_model(model, model_file, testdata_loader, gpu_ids, device)
+            AP_all.append(AP)
+            mTTA_all.append(mTTA)
+            TTA_R80_all.append(TTA_R80)
+        # print results to file
+        print_results(AP_all, mTTA_all, TTA_R80_all, result_dir)
+    else:
+        AP, mTTA, TTA_R80 = eval_model(model, p.model_file, testdata_loader, gpu_ids, device)
+
+
+def eval_model(model, weight_file, testdata_loader, gpu_ids, device):
+    # load the trained model weights
+    assert os.path.exists(weight_file)
+    checkpoint = torch.load(weight_file)
+    model.load_state_dict(checkpoint['model'])
+    print('Model weights are loaded.')
+
+    if len(gpu_ids) > 1:
+        model = torch.nn.DataParallel(model)
+    model = model.to(device=device)
+    model.eval()
 
     all_pred, all_labels = [], []
     print('----------------------------------')
@@ -346,8 +374,6 @@ def test_eval():
         # visualize
         if p.visualize:
             vis_results(pred_frames, toa, labels, video_ids, vis_dir)
-            print('Batch %d visualized.'%(i))
-            # continue
         # evaluation
         print("Batch %d processed. Time=%.3f s per video."%(i, time_ellapsed))
         all_pred.append(pred_frames)
@@ -358,10 +384,18 @@ def test_eval():
     all_labels = np.hstack((np.hstack(all_labels[:-1]), all_labels[-1]))
     print('----------------------------------')
     print("Starting evaluation...")
-    AP = evaluation(all_pred, all_labels, total_time=90)
+    AP, mTTA, TTA_R80 = evaluation(all_pred, all_labels, total_time=90)
     print('----------------------------------')
+    return AP, mTTA, TTA_R80
 
 
+def print_results(AP_all, mTTA_all, TTA_R80_all, result_dir):
+    result_file = os.path.join(result_dir, 'eval_all.txt')
+    with open(result_file, 'w') as f:
+        for AP, mTTA, TTA_R80 in zip(AP_all, mTTA_all, TTA_R80_all):
+            f.writelines('%.3f %.3f %.3f\n'.format(AP, mTTA, TTA_R80))
+    f.close()
+    
 
 def vis_results(pred_frames, toa, labels, video_ids, vis_dir):
     for n in range(p.batch_size):
@@ -421,6 +455,8 @@ if __name__ == '__main__':
                         help="The delimited list of GPU IDs separated with comma. Default: '0'.")
     parser.add_argument('--phase', type=str, choices=['train', 'test'],
                         help='The state of running the model. Default: train')
+    parser.add_argument('--evaluate_all', action='store_true',
+                        help='Whether to evaluate models of all epoches. Default: False')
     parser.add_argument('--visualize', action='store_true',
                         help='The visualization flag. Default: False')
     parser.add_argument('--model_file', type=str, default='./output/dad/snapshot/vgrnn_model_90.pth',

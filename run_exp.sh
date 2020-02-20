@@ -46,6 +46,7 @@ case ${PHASE} in
       --hidden_dim 128 \
       --latent_dim 64 \
       --feature_dim 2048 \
+      --evaluate_all \
       --visualize \
       --output_dir ./output_i3d \
       --model_file ./output_i3d/dad/snapshot/vgrnn_model_${EPOCH}.pth
