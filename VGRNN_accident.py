@@ -227,6 +227,7 @@ def train_eval():
     traindata_loader = DataLoader(dataset=train_data, batch_size=p.batch_size, shuffle=True, drop_last=True)
     testdata_loader = DataLoader(dataset=test_data, batch_size=p.batch_size, shuffle=True, drop_last=True)
 
+
     iter_cur = 0
     for k in range(p.epoch):
         for i, (batch_xs, batch_ys, graph_edges, edge_weights) in enumerate(traindata_loader):
