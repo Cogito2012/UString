@@ -11,7 +11,7 @@ import argparse
 
 from torch.utils.data import DataLoader
 
-from src.GraphModels import VGRNN
+from src.GraphModels import GCRNN
 import ipdb
 import matplotlib.pyplot as plt
 from tensorboardX import SummaryWriter
@@ -19,8 +19,6 @@ from tensorboardX import SummaryWriter
 seed = 123
 np.random.seed(seed)
 torch.manual_seed(seed)
-# torch.backends.cudnn.deterministic = True
-# torch.backends.cudnn.benchmark = False
 ROOT_PATH = os.path.dirname(__file__)
  
 
@@ -59,15 +57,18 @@ def evaluation(all_pred, all_labels, total_time = 90, vis = False, length = None
                 counter = counter+1
             Tp_Fp += float(len(np.where(all_pred[i]>=Th)[0])>0)
         if Tp_Fp == 0:
-            Precision[cnt] = np.nan
+            # Precision[cnt] = np.nan
+            continue
         else:
             Precision[cnt] = Tp/Tp_Fp
         if np.sum(all_labels) ==0:
-            Recall[cnt] = np.nan
+            # Recall[cnt] = np.nan
+            continue
         else:
             Recall[cnt] = Tp/np.sum(all_labels)
         if counter == 0:
-            Time[cnt] = np.nan
+            # Time[cnt] = np.nan
+            continue
         else:
             Time[cnt] = (1-time/counter)
         cnt += 1
@@ -95,14 +96,12 @@ def evaluation(all_pred, all_labels, total_time = 90, vis = False, length = None
     for i in range(1,len(new_Precision)):
         AP += (new_Precision[i-1]+new_Precision[i])*(new_Recall[i]-new_Recall[i-1])/2
 
-    mTTA = np.mean(new_Time) * 5
-    print("Average Precision= %.4f, mean Time to accident= %.4f"%(AP, mTTA))
+    mTTA = np.mean(new_Time)
+    print("Average Precision= %.4f, mean Time to accident= %.4f"%(AP, mTTA * 5))
     sort_time = new_Time[np.argsort(new_Recall)]
     sort_recall = np.sort(new_Recall)
-    TTA_R80 = sort_time[np.argmin(np.abs(sort_recall-0.8))] * 5
-    print("Recall@80%, Time to accident= " +"{:.4}".format(TTA_R80))
-
-    ### visualize
+    TTA_R80 = sort_time[np.argmin(np.abs(sort_recall-0.8))]
+    print("Recall@80%, Time to accident= " +"{:.4}".format(TTA_R80 * 5))
 
     if vis:
         plt.plot(new_Recall, new_Precision, label='Precision-Recall curve')
@@ -121,6 +120,10 @@ def evaluation(all_pred, all_labels, total_time = 90, vis = False, length = None
         plt.title('Recall-mean_time' )
         plt.show()
 
+    if mTTA == np.nan:
+        mTTA = 0
+    if TTA_R80 == np.nan:
+        TTA_R80 = 0
     return AP, mTTA, TTA_R80
 
 
@@ -129,16 +132,13 @@ def test_all(testdata_loader, model, time=90, gpu_ids=[0]):
     
     all_pred = []
     all_labels = []
-    loss_val, loss_kld_val, loss_acc_val = 0, 0, 0
+    loss_val = 0
     for i, (batch_xs, batch_ys, graph_edges, edge_weights) in enumerate(testdata_loader):
         # ipdb.set_trace()
         with torch.no_grad():
-            kld_loss, acc_loss, pred_scores, prior_means, hiddens = model(batch_xs, batch_ys, graph_edges, hidden_in=None, edge_weights=edge_weights)
-        loss = acc_loss + p.loss_weight * kld_loss
+            loss, pred_scores, hiddens = model(batch_xs, batch_ys, graph_edges, hidden_in=None, edge_weights=edge_weights)
 
         loss_val += loss.mean().item()
-        loss_kld_val += kld_loss.mean().item()
-        loss_acc_val += acc_loss.mean().item()
 
         num_frames = batch_xs.size()[1]
         assert num_frames >= time
@@ -147,13 +147,7 @@ def test_all(testdata_loader, model, time=90, gpu_ids=[0]):
         # run inference
         with torch.no_grad():
             for t in range(time):
-                latent = prior_means[t]
-                if p.use_hidden:
-                    h = hiddens[t]
-                    embed = torch.cat([latent, h], -1).view(latent.size(0), -1)
-                else:
-                    embed = latent.view(latent.size(0), -1)
-                pred = model.module.predictor(embed) if len(gpu_ids)>1 else model.predictor(embed)  # 10 x 2
+                pred = pred_scores[t]
                 pred = pred.cpu().numpy() if pred.is_cuda else pred.detach().numpy()
                 pred_frames[:, t] = np.exp(pred[:, 1]) / np.sum(np.exp(pred), axis=1)
         # gather results and ground truth
@@ -164,8 +158,6 @@ def test_all(testdata_loader, model, time=90, gpu_ids=[0]):
 
     num_batch = i + 1
     loss_val /= num_batch
-    loss_kld_val /= num_batch
-    loss_acc_val /= num_batch
 
     # evaluation
     all_pred = np.vstack((np.vstack(all_pred[:-1]), all_pred[-1]))
@@ -175,7 +167,7 @@ def test_all(testdata_loader, model, time=90, gpu_ids=[0]):
     AP, mTTA, TTA_R80 = evaluation(all_pred, all_labels, total_time=time)
     print('----------------------------------')
     
-    return loss_val, loss_kld_val, loss_acc_val, AP
+    return loss_val, AP, mTTA, TTA_R80
 
 
 def train_eval():
@@ -204,7 +196,7 @@ def train_eval():
     device = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
 
     # building model
-    model = VGRNN(x_dim, h_dim, z_dim, p.num_rnn, conv=p.conv_type, bias=True, loss_func=p.loss_func, use_hidden=p.use_hidden)
+    model = GCRNN(x_dim, h_dim, z_dim, p.num_rnn, conv=p.conv_type, bias=True, loss_func=p.loss_func, use_hidden=p.use_hidden)
 
     if len(gpu_ids) > 1:
         model = torch.nn.DataParallel(model)
@@ -233,36 +225,32 @@ def train_eval():
         for i, (batch_xs, batch_ys, graph_edges, edge_weights) in enumerate(traindata_loader):
             # ipdb.set_trace()
             optimizer.zero_grad()
-            kld_loss, acc_loss, _, _, hidden_st = model(batch_xs, batch_ys, graph_edges, edge_weights=edge_weights)
-
-            loss = acc_loss + p.loss_weight * kld_loss
+            loss, predictions, hidden_st = model(batch_xs, batch_ys, graph_edges, edge_weights=edge_weights)
+            # backward
             loss.mean().backward()
-            
+            # clip gradients
             torch.nn.utils.clip_grad_norm(model.parameters(), 10)
             optimizer.step()
 
             print('----------------------------------')
             print('epoch: %d, iter: %d' % (k, iter_cur))
-            print('kld_loss = %.6f (*factor=%.3f)' % (kld_loss.mean().item(), p.loss_weight))
-            print('%s_loss = %.6f' % (p.loss_func, acc_loss.mean().item()))
             print('loss = %.6f' % (loss.mean().item()))
-            info = {'loss': loss.mean().item(),
-                    'loss_kld': kld_loss.mean().item(),
-                    'loss_%s'%(p.loss_func): acc_loss.mean().item()}
+            info = {'loss': loss.mean().item()}
             logger.add_scalars("losses/train", info, iter_cur)
             
             iter_cur += 1
             # test and evaluate the model
             if iter_cur % p.test_iter == 0:
                 model.eval()
-                loss_val, loss_kld_val, loss_acc_val, AP = test_all(testdata_loader, model, time=90, gpu_ids=gpu_ids)
+                loss_val, AP, mTTA, TTA_R80 = test_all(testdata_loader, model, time=90, gpu_ids=gpu_ids)
                 model.train()
                 # keep track of validation losses
-                info = {'loss': loss_val, 'loss_kld': loss_kld_val, 'loss_%s'%(p.loss_func): loss_acc_val}
-                logger.add_scalars("losses/val", info, iter_cur)
+                logger.add_scalars("losses/val", {'loss': loss_val}, iter_cur)
+                logger.add_scalars("accuracy/val", {'AP': AP}, iter_cur)
+                logger.add_scalars("time-to-accident/val", {'mTTA': mTTA, 'TTA_R80': TTA_R80}, iter_cur)
 
         # save model
-        model_file = os.path.join(model_dir, 'vgrnn_model_%02d.pth'%(k))
+        model_file = os.path.join(model_dir, 'gcrnn_model_%02d.pth'%(k))
         torch.save({'epoch': k,
                     'model': model.module.state_dict() if len(gpu_ids)>1 else model.state_dict(),
                     'optimizer': optimizer.state_dict()}, model_file)
@@ -307,7 +295,7 @@ def test_eval():
     print("Number of testing samples: %d"%(num_samples))
     
     # building model
-    model = VGRNN(p.feature_dim, p.hidden_dim, p.latent_dim, p.num_rnn, conv=p.conv_type, bias=True, use_hidden=p.use_hidden)
+    model = GCRNN(p.feature_dim, p.hidden_dim, p.latent_dim, p.num_rnn, conv=p.conv_type, bias=True, use_hidden=p.use_hidden)
     # start to evaluate
     if p.evaluate_all:
         model_dir = os.path.join(p.output_dir, p.dataset, 'snapshot')
@@ -320,17 +308,17 @@ def test_eval():
             print("Evaluation for epoch: " + epoch_str)
             model_file = os.path.join(model_dir, filename)
             # run model inference
-            AP, mTTA, TTA_R80 = eval_model(model, model_file, testdata_loader, gpu_ids, device)
+            AP, mTTA, TTA_R80 = eval_model(model, model_file, testdata_loader, gpu_ids, device, vis_dir=vis_dir)
             AP_all.append(AP)
             mTTA_all.append(mTTA)
             TTA_R80_all.append(TTA_R80)
         # print results to file
         print_results(AP_all, mTTA_all, TTA_R80_all, result_dir)
     else:
-        AP, mTTA, TTA_R80 = eval_model(model, p.model_file, testdata_loader, gpu_ids, device)
+        AP, mTTA, TTA_R80 = eval_model(model, p.model_file, testdata_loader, gpu_ids, device, vis_dir=vis_dir)
 
 
-def eval_model(model, weight_file, testdata_loader, gpu_ids, device):
+def eval_model(model, weight_file, testdata_loader, gpu_ids, device, vis_dir=None):
     # load the trained model weights
     assert os.path.exists(weight_file)
     checkpoint = torch.load(weight_file)
@@ -349,7 +337,7 @@ def eval_model(model, weight_file, testdata_loader, gpu_ids, device):
         torch.cuda.synchronize()
         start = time.time()
         with torch.no_grad():
-            _, _, pred_scores, prior_means, hiddens = model(batch_xs, batch_ys, graph_edges, hidden_in=None, edge_weights=edge_weights)
+            loss, pred_scores, hiddens = model(batch_xs, batch_ys, graph_edges, hidden_in=None, edge_weights=edge_weights)
 
         num_frames = batch_xs.size()[1]
         batch_size = batch_xs.size()[0]
@@ -357,13 +345,7 @@ def eval_model(model, weight_file, testdata_loader, gpu_ids, device):
         # run inference
         with torch.no_grad():
             for t in range(90):
-                latent = prior_means[t]
-                if p.use_hidden:
-                    h = hiddens[t]
-                    embed = torch.cat([latent, h], -1).view(latent.size(0), -1)
-                else:
-                    embed = latent.view(latent.size(0), -1)
-                pred = model.module.predictor(embed) if len(gpu_ids)>1 else model.predictor(embed)  # 10 x 2
+                pred = pred_scores[t]
                 pred = pred.cpu().numpy() if pred.is_cuda else pred.detach().numpy()
                 pred_frames[:, t] = np.exp(pred[:, 1]) / np.sum(np.exp(pred), axis=1)
         label_onehot = batch_ys.cpu().numpy()
@@ -436,7 +418,7 @@ if __name__ == '__main__':
                         help='The number of RNN cells for each timestamp. Default: 1')
     parser.add_argument('--feature_name', type=str, default='vgg16', choices=['vgg16', 'i3d'],
                         help='The name of feature embedding methods. Default: vgg16')
-    parser.add_argument('--conv_type', type=str, default='GCN', choices=['GCN', 'SAGE', 'GIN'],
+    parser.add_argument('--conv_type', type=str, default='GCN', choices=['GCN'],
                         help='The types of graph convolutional neural networks. Default: GCN')
     parser.add_argument('--test_iter', type=int, default=20,
                         help='The number of iteration to perform a evaluation process.')
@@ -460,8 +442,8 @@ if __name__ == '__main__':
                         help='Whether to evaluate models of all epoches. Default: False')
     parser.add_argument('--visualize', action='store_true',
                         help='The visualization flag. Default: False')
-    parser.add_argument('--model_file', type=str, default='./output/dad/snapshot/vgrnn_model_90.pth',
-                        help='The trained VGRNN model file for demo test only.')
+    parser.add_argument('--model_file', type=str, default='./output/dad/snapshot/gcrnn_model_90.pth',
+                        help='The trained GCRNN model file for demo test only.')
     parser.add_argument('--output_dir', type=str, default='./output',
                         help='The directory of src need to save in the training.')
 
