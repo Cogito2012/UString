@@ -268,6 +268,7 @@ def test_eval():
     # visualization results
     # ipdb.set_trace()
     p.visualize = False if p.evaluate_all else p.visualize
+    vis_dir = None
     if p.visualize:
         epoch_str = p.model_file.split("_")[-1].split(".pth")[0]
         vis_dir = os.path.join(result_dir, 'vis_epoch' + epoch_str)
@@ -308,7 +309,7 @@ def test_eval():
             print("Evaluation for epoch: " + epoch_str)
             model_file = os.path.join(model_dir, filename)
             # run model inference
-            AP, mTTA, TTA_R80 = eval_model(model, model_file, testdata_loader, gpu_ids, device, vis_dir=vis_dir)
+            AP, mTTA, TTA_R80 = eval_model(model, model_file, testdata_loader, gpu_ids, device, vis_dir=None)
             AP_all.append(AP)
             mTTA_all.append(mTTA)
             TTA_R80_all.append(TTA_R80)
@@ -355,7 +356,7 @@ def eval_model(model, weight_file, testdata_loader, gpu_ids, device, vis_dir=Non
         time_ellapsed = (time.time()-start) / batch_size
 
         # visualize
-        if p.visualize:
+        if vis_dir is not None:
             vis_results(pred_frames, toa, labels, video_ids, vis_dir)
         # evaluation
         print("Batch %d processed. Time=%.3f s per video."%(i, time_ellapsed))
