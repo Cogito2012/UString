@@ -394,7 +394,7 @@ def print_results(AP_all, mTTA_all, TTA_R80_all, result_dir):
     result_file = os.path.join(result_dir, 'eval_all.txt')
     with open(result_file, 'w') as f:
         for AP, mTTA, TTA_R80 in zip(AP_all, mTTA_all, TTA_R80_all):
-            f.writelines('%.3f %.3f %.3f\n'.format(AP, mTTA, TTA_R80))
+            f.writelines('{:.3f} {:.3f} {:.3f}\n'.format(AP, mTTA, TTA_R80))
     f.close()
     
 
