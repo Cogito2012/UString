@@ -2,9 +2,10 @@
 set -x
 set -e
 
-# source activate py37
+source activate py37
 PHASE=$1
-EPOCH=$2
+GPUS=$2
+EPOCH=$3
 
 LOG_DIR="./logs"
 if [ ! -d $LOG_DIR ]; then
@@ -19,34 +20,34 @@ echo Logging output to "$LOG"
 # experiments on DAD dataset
 case ${PHASE} in
   train)
-    CUDA_VISIBLE_DEVICES="0" python GCRNN_accident.py \
+    CUDA_VISIBLE_DEVICES=$GPUS python GCRNN_accident.py \
       --dataset dad \
       --feature_name vgg16 \
       --phase train \
-      --base_lr 0.001 \
-      --batch_size 64 \
-      --epoch 200  \
-      --test_iter 20 \
+      --base_lr 0.0001 \
+      --batch_size 10 \
+      --epoch $EPOCH \
+      --test_iter 64 \
       --loss_weight 0.1 \
-      --hidden_dim 128 \
-      --latent_dim 64 \
+      --hidden_dim 512 \
+      --latent_dim 256 \
       --feature_dim 4096 \
-      --gpus "0" \
-      --output_dir ./output_dev/vgg16
+      --gpus $GPUS \
+      --output_dir ./output_dev/gcrnn/vgg16
     ;;
   test)
-    CUDA_VISIBLE_DEVICES="0" python GCRNN_accident.py \
+    CUDA_VISIBLE_DEVICES=$GPUS python GCRNN_accident.py \
       --dataset dad \
       --feature_name vgg16 \
-      --phase test \
-      --batch_size 16 \
-      --hidden_dim 128 \
-      --latent_dim 64 \
+      --batch_size 10 \
+      --loss_weight 0.1 \
+      --hidden_dim 521 \
+      --latent_dim 256 \
       --feature_dim 4096 \
       --evaluate_all \
       --visualize \
-      --output_dir ./output_dev/vgg16 \
-      --model_file ./output_dev/vgg16/dad/snapshot/gcrnn_model_${EPOCH}.pth
+      --output_dir ./output_dev/gcrnn/vgg16 \
+      --model_file ./output_dev/gcrnn/vgg16/dad/snapshot/gcrnn_model_${EPOCH}.pth
     ;;
   *)
     echo "Invalid argument!"

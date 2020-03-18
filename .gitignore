@@ -6,3 +6,4 @@ logs/
 log*
 debug_exp.sh
 models_i3d/
+nohup.out
