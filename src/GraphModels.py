@@ -12,7 +12,7 @@ import torch_scatter
 from torch_scatter import scatter_mean, scatter_max, scatter_add
 from torch.autograd import Variable
 import torch.nn.functional as F
-
+from src.BayesModels import BayesianLinear
 
 class MessagePassing(torch.nn.Module):
     r"""Base class for creating message passing layers
@@ -287,6 +287,43 @@ class AccidentPredictor(nn.Module):
         for weight in self.parameters():
             weight.data.normal_(0, stdv)
 
+
+class BayesianPredictor(nn.Module):
+    def __init__(self, input_dim, output_dim=2, act=torch.relu, pi=0.5, sigma_1=None, sigma_2=None):
+        super(BayesianPredictor, self).__init__()
+        self.act = act
+        self.l1 = BayesianLinear(input_dim, 32, pi=pi, sigma_1=sigma_1, sigma_2=sigma_2)
+        self.l2 = BayesianLinear(32, output_dim, pi=pi, sigma_1=sigma_1, sigma_2=sigma_2)
+
+    def forward(self, x, sample=False):
+        x = self.act(self.l1(x, sample))
+        x = self.l2(x, sample)
+        return x
+
+    def log_prior(self):
+        return self.l1.log_prior + self.l2.log_prior
+
+    def log_variational_posterior(self):
+        return self.l1.log_variational_posterior + self.l2.log_variational_posterior
+
+    def sample_elbo(self, input, out_dim=2, npass=2, testing=False):
+        npass = npass + 1 if testing else npass
+        outputs = torch.zeros(npass, input.size(0), out_dim).to(input.device)
+        log_priors = torch.zeros(npass).to(input.device)
+        log_variational_posteriors = torch.zeros(npass).to(input.device)
+        for i in range(npass):
+            outputs[i] = self(input, sample=True)
+            log_priors[i] = self.log_prior()
+            log_variational_posteriors[i] = self.log_variational_posterior()
+        if testing:
+            outputs[npass] = self(input, sample=False)
+        output = outputs.mean(0)
+        log_prior = log_priors.mean()
+        log_variational_posterior = log_variational_posteriors.mean()
+
+        return output, log_prior, log_variational_posterior
+
+
 # GCRNN model
 
 class GCRNN(nn.Module):
@@ -391,3 +428,111 @@ class GCRNN(nn.Module):
         return loss
 
 
+
+class BayesGCRNN(nn.Module):
+    def __init__(self, x_dim, h_dim, z_dim, n_layers, n_obj=20, eps=1e-10, conv='GCN', bias=False, loss_func='exp', use_hidden=False):
+        super(BayesGCRNN, self).__init__()
+
+        self.x_dim = x_dim
+        self.eps = eps
+        self.h_dim = h_dim
+        self.z_dim = z_dim
+        self.n_layers = n_layers
+        self.loss_func = loss_func
+        self.use_hidden = use_hidden
+        self.n_obj = n_obj
+
+        self.phi_x = nn.Sequential(nn.Linear(x_dim, h_dim), nn.ReLU())
+        self.phi_z = nn.Sequential(nn.Linear(z_dim, h_dim), nn.ReLU())
+
+        # GCN encoder
+        self.enc_gcn1 = GCNConv(h_dim + h_dim, h_dim)
+        self.enc_gcn2 = GCNConv(h_dim, z_dim, act=lambda x: x)
+        # rnn layer
+        self.rnn = graph_gru_gcn(h_dim + h_dim, h_dim, n_layers, bias)
+        # BNN decoder
+        dim_encode = z_dim + h_dim if use_hidden else z_dim
+        self.predictor = BayesianPredictor(n_obj * dim_encode, 2)
+        
+        # loss function
+        self.ce_loss = torch.nn.CrossEntropyLoss(reduction='none')
+        # intialize parameters
+        self.reset_parameters(stdv=1e-2)
+
+
+    def forward(self, x, y, edge_idx_list, hidden_in=None, edge_weights=None, npass=2, nbatch=80, testing=False):
+        """
+        :param x, (batchsize, nFrames, nBoxes, Xdim)
+        """
+        losses = {'cross_entropy': 0,
+                  'log_posterior': 0,
+                  'log_prior': 0,
+                  'total_loss': 0}
+        all_dec, all_hidden = [], []
+
+        # import ipdb; ipdb.set_trace()
+        if hidden_in is None:
+            h = Variable(torch.zeros(self.n_layers, x.size(0), x.size(2), self.h_dim))  # 1 x 10 x 20 x 32
+        else:
+            h = Variable(hidden_in)
+        h = h.to(x.device)
+
+        for t in range(x.size(1)):
+            # reduce the dim of node feature (FC layer)
+            phi_x_t = self.phi_x(x[:, t])  # 10 x 20 x 32
+
+            # GCN encoder
+            enc = self.enc_gcn1(torch.cat([phi_x_t, h[-1]], -1), edge_idx_list[:, t], edge_weight=edge_weights[:, t])
+            z_t = self.enc_gcn2(enc, edge_idx_list[:, t], edge_weight=edge_weights[:, t])
+
+            # BNN decoder
+            if self.use_hidden:
+                embed = torch.cat([z_t, h[-1]], -1).view(z_t.size(0), -1)
+            else:
+                embed = z_t.view(z_t.size(0), -1)
+            dec_t, log_prior, log_variational_posterior = self.predictor.sample_elbo(embed, npass=npass, testing=testing)  # B x 2
+
+            # recurrence
+            phi_z_t = self.phi_z(z_t)
+            _, h = self.rnn(torch.cat([phi_x_t, phi_z_t], 2), edge_idx_list[:, t], h)
+
+            # computing losses
+            if self.loss_func == 'exp':
+                losses['cross_entropy'] += self._exp_loss(dec_t, y, t)
+            elif self.loss_func == 'bernoulli':
+                pass
+            losses['log_posterior'] += log_variational_posterior / nbatch
+            losses['log_prior'] += log_prior / nbatch
+            losses['total_loss'] = losses['log_posterior'] - losses['log_prior'] + losses['cross_entropy']
+
+            all_dec.append(dec_t)
+            all_hidden.append(h[-1])
+
+        return losses, all_dec, all_hidden
+
+
+    def reset_parameters(self, stdv=1e-1):
+        for weight in self.parameters():
+            weight.data.normal_(0, stdv)
+
+
+
+    def _exp_loss(self, pred, target, time, frames=100, fps=20.0):
+        '''
+        :param pred:
+        :param target: onehot codings for binary classification
+        :param time:
+        :param frames:
+        :param fps:
+        :return:
+        '''
+        # positive example (exp_loss)
+        target_cls = target[:, 1]
+        target_cls = target_cls.to(torch.long)
+        pos_loss = -torch.mul(torch.exp(-torch.tensor((frames - time - 1) / fps)),
+                              -self.ce_loss(pred, target_cls))
+        # negative example
+        neg_loss = self.ce_loss(pred, target_cls)
+
+        loss = torch.mean(torch.add(torch.mul(pos_loss, target[:, 1]), torch.mul(neg_loss, target[:, 0])))
+        return loss

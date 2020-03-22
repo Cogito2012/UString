@@ -1,4 +1,5 @@
 .idea
+.vscode
 data/*
 *.pyc
 logs/
@@ -7,3 +8,6 @@ log*
 debug_exp.sh
 models_i3d/
 nohup.out
+backup
+runs
+__pycache__
