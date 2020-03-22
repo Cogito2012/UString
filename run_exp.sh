@@ -41,7 +41,7 @@ case ${PHASE} in
       --feature_name vgg16 \
       --batch_size 10 \
       --loss_weight 0.1 \
-      --hidden_dim 521 \
+      --hidden_dim 512 \
       --latent_dim 256 \
       --feature_dim 4096 \
       --evaluate_all \
