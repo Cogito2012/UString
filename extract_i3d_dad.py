@@ -2,13 +2,12 @@ import os
 import cv2
 import numpy as np
 import torch
-# from torchvision.ops import RoIAlign
-# import torchvision.ops.roi_align as roi_align
 import sys
 sys.path.insert(0, './lib/RoIAlign')
 from roi_align import RoIAlign      # RoIAlign module
-from pytorch_i3d import InceptionI3d
 from torch.autograd import Variable
+from src.ResNetI3D import i3_res50_nl
+
 
 def get_video_data(video_file, ratio=0.5):
     # get the video data
@@ -44,7 +43,7 @@ def extract_features(data_path, video_path, dest_path, phase):
         detections = all_data['det']  # 10 x 100 x 19 x 6
         videos = all_data['ID']  # 10
         nid = 1
-        features_i3d = np.zeros((labels.shape[0], N_FRAMES, N_BOXES + 1, FEAT_DIM))
+        features_i3d = np.zeros((labels.shape[0], N_FRAMES, N_BOXES + 1, FEAT_DIM))  # (10 x 100 x 20 x 2048)
         for i, vid in enumerate(videos):
             vidname = 'b' + str(batch_id).zfill(3) + '_' + vid.decode('UTF-8')
             tag = 'positive' if labels[i, 1] > 0 else 'negative'
@@ -52,28 +51,26 @@ def extract_features(data_path, video_path, dest_path, phase):
             # read video data and run inference
             # import ipdb; ipdb.set_trace()
             data_input = get_video_data(video_file, ratio=0.5)
-            num_segments = int(data_input.shape[2] / time_step)  # 5
+            # num_segments = int(data_input.shape[2] / time_step)  # 5
             with torch.no_grad():
-                data_input = torch.from_numpy(data_input).cuda()    # 1 x 3 x 50 x 360 x 640
-                for t in range(num_segments):
+                data_input = torch.from_numpy(data_input).cuda()    # 1 x 3 x 100 x 360 x 640
+                batch_inds = torch.tensor([0] * N_BOXES, dtype=torch.int).cuda()
+                # compute the features for each frame 
+                for t in range(N_FRAMES - TIME_STEP): # (1-90)
                     # get I3D features for each segment
-                    start = t * time_step
-                    end = (t+1) * time_step
-                    feats = i3d.extract_features(data_input[:, :, start: end, :, :])  # 1 x 2048 x 10 x 23 x 40
-                    feats = feats.squeeze(0).permute(1, 0, 2, 3)  # 10 x 2048 x 23 x 40
-                    feats_global = torch.mean(feats, dim=(2, 3))  # 10 x 2048
-                    for f in range(start, end):
-                        # ROIAlign
-                        boxes = torch.from_numpy(detections[i, f, :, :4] / STRIDE).to(torch.float).cuda()  # 19 x 5
-                        # Note that the features are temporally pooled with 2
-                        # We need to map the features to original temporal domain (10xCxHxW --> 20xCxHxW)
-                        idx = int((f-start) / 2)
-                        feat_map = feats[idx].unsqueeze(0).contiguous()
-                        batch_inds = torch.tensor([0] * boxes.size(0), dtype=torch.int).cuda()
-                        feats_rois = roi_align(feat_map, boxes, batch_inds)  # 19 x 2048 x 7 x 7
-                        features_i3d[i, f, :N_BOXES, :] = torch.mean(feats_rois, dim=(2, 3)).cpu().numpy()
-                        features_i3d[i, f, N_BOXES, :] = feats_global[idx].unsqueeze(0).contiguous().cpu().numpy()
-                        # feats_rois = roi_align(feats[idx], rois, (7, 7), spatial_scale=1.0/32, sampling_ratio=-1)
+                    feats = i3d.extract_features(data_input[:, :, t: (t+TIME_STEP), :, :])  # 1 x 2048 x 5 x 23 x 40
+                    feats = feats.squeeze(0).permute(1, 0, 2, 3)  # 5 x 2048 x 23 x 40
+                    feats = torch.mean(feats, dim=0)  # 2048 x 23 x 40
+                    # ROIAlign
+                    feat_map = feats.unsqueeze(0).contiguous()  # 1 x 2048 x 23 x 40
+                    boxes = torch.from_numpy(detections[i, t, :, :4] / STRIDE).to(torch.float).cuda()  # 19 x 4
+                    feats_rois = roi_align(feat_map, boxes, batch_inds)  # 19 x 2048 x 7 x 7
+                    # full frame features
+                    features_i3d[i, t, 0, :] = torch.mean(feats, dim=(1,2)).cpu().numpy()  # 2048
+                    features_i3d[i, t, 1:, :] = torch.mean(feats_rois, dim=(2, 3)).cpu().numpy()
+                # replicate the rest TIME_STEP (10) frame features
+                features_i3d[i, (N_FRAMES - TIME_STEP):, :, :] = np.tile(np.expand_dims(features_i3d[i, N_FRAMES - TIME_STEP, :, :], axis=0), reps=(TIME_STEP, 1, 1))
+
             if vidname in files_list:
                 vidname = vidname + '_' + str(nid).zfill(2)
                 nid += 1
@@ -111,15 +108,10 @@ if __name__ == '__main__':
     N_BOXES = 19
     STRIDE = 16
     FEAT_DIM = 2048
-    # original Inception-based I3D
-    # i3d = InceptionI3d(400, in_channels=3)
-    # #i3d.replace_logits(157)
-    # i3d.load_state_dict(torch.load(MODEL_FILE))
-    # i3d.cuda()
+    TIME_STEP = 10
 
     # ResNet-50 I3D
-    from resi3d import resnet
-    i3d = resnet.i3_res50_nl(400)
+    i3d = i3_res50_nl(400)
     # roi_align = RoIAlign((7, 7), spatial_scale=1.0/32, sampling_ratio=-1)
     roi_align = RoIAlign(7, 7)
     roi_align = roi_align.cuda()
