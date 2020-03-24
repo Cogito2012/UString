@@ -242,25 +242,21 @@ class graph_gru_gcn(nn.Module):
                 self.weight_xh.append(GCNConv(hidden_size, hidden_size, act=lambda x: x, bias=bias))
                 self.weight_hh.append(GCNConv(hidden_size, hidden_size, act=lambda x: x, bias=bias))
 
-    def forward(self, inp, edgidx, h):
+    def forward(self, inp, edgidx, h, edge_weight=None):
         h_out = torch.zeros(h.size())
         h_out = h_out.to(inp.device)
         for i in range(self.n_layer):
             if i == 0:
-                z_g = torch.sigmoid(self.weight_xz[i](inp, edgidx) + self.weight_hz[i](h[i], edgidx))
-                r_g = torch.sigmoid(self.weight_xr[i](inp, edgidx) + self.weight_hr[i](h[i], edgidx))
-                h_tilde_g = torch.tanh(self.weight_xh[i](inp, edgidx) + self.weight_hh[i](r_g * h[i], edgidx))
+                z_g = torch.sigmoid(self.weight_xz[i](inp, edgidx, edge_weight) + self.weight_hz[i](h[i], edgidx, edge_weight))
+                r_g = torch.sigmoid(self.weight_xr[i](inp, edgidx, edge_weight) + self.weight_hr[i](h[i], edgidx, edge_weight))
+                h_tilde_g = torch.tanh(self.weight_xh[i](inp, edgidx, edge_weight) + self.weight_hh[i](r_g * h[i], edgidx, edge_weight))
                 h_out[i] = z_g * h[i] + (1 - z_g) * h_tilde_g
-            #         out = self.decoder(h_t.view(1,-1))
             else:
-                z_g = torch.sigmoid(self.weight_xz[i](h_out[i - 1], edgidx) + self.weight_hz[i](h[i], edgidx))
-                r_g = torch.sigmoid(self.weight_xr[i](h_out[i - 1], edgidx) + self.weight_hr[i](h[i], edgidx))
-                h_tilde_g = torch.tanh(self.weight_xh[i](h_out[i - 1], edgidx) + self.weight_hh[i](r_g * h[i], edgidx))
+                z_g = torch.sigmoid(self.weight_xz[i](h_out[i - 1], edgidx, edge_weight) + self.weight_hz[i](h[i], edgidx, edge_weight))
+                r_g = torch.sigmoid(self.weight_xr[i](h_out[i - 1], edgidx, edge_weight) + self.weight_hr[i](h[i], edgidx, edge_weight))
+                h_tilde_g = torch.tanh(self.weight_xh[i](h_out[i - 1], edgidx, edge_weight) + self.weight_hh[i](r_g * h[i], edgidx, edge_weight))
                 h_out[i] = z_g * h[i] + (1 - z_g) * h_tilde_g
-        #         out = self.decoder(h_t.view(1,-1))
-
-        out = h_out
-        return out, h_out
+        return h_out
 
 
 class AccidentPredictor(nn.Module):
@@ -327,7 +323,7 @@ class BayesianPredictor(nn.Module):
 # GCRNN model
 
 class GCRNN(nn.Module):
-    def __init__(self, x_dim, h_dim, z_dim, n_layers, n_obj=20, eps=1e-10, conv='GCN', bias=False, loss_func='exp', use_hidden=False):
+    def __init__(self, x_dim, h_dim, z_dim, n_layers, n_obj=19, eps=1e-10, loss_func='exp', use_hidden=False):
         super(GCRNN, self).__init__()
 
         self.x_dim = x_dim
@@ -340,12 +336,11 @@ class GCRNN(nn.Module):
         self.n_obj = n_obj
 
         self.phi_x = nn.Sequential(nn.Linear(x_dim, h_dim), nn.ReLU())
-        self.phi_z = nn.Sequential(nn.Linear(z_dim, h_dim), nn.ReLU())
 
-        self.enc = GCNConv(h_dim + h_dim, h_dim)
-        self.enc_z = GCNConv(h_dim, z_dim, act=lambda x: x)
+        self.enc_gcn1 = GCNConv(h_dim + h_dim, h_dim)
+        self.enc_gcn2 = GCNConv(h_dim + h_dim, z_dim, act=lambda x: x)
 
-        self.rnn = graph_gru_gcn(h_dim + h_dim, h_dim, n_layers, bias)
+        self.rnn = graph_gru_gcn(h_dim + h_dim + z_dim, h_dim, n_layers, bias=True)
 
         dim_encode = z_dim + h_dim if use_hidden else z_dim
         self.predictor = AccidentPredictor(n_obj * dim_encode, 2, dropout=0.5)
@@ -354,40 +349,39 @@ class GCRNN(nn.Module):
         self.reset_parameters(stdv=1e-2)
 
 
-    def forward(self, x, y, edge_idx_list, hidden_in=None, edge_weights=None):
+    def forward(self, x, y, edge_idx, hidden_in=None, edge_weights=None):
         """
-        :param x, (batchsize, nFrames, nBoxes, Xdim)
+        :param x, (batchsize, nFrames, nBoxes, Xdim) = (10, 100, 20, 4096)
         """
         acc_loss = 0
         all_dec, all_hidden = [], []
 
         # import ipdb; ipdb.set_trace()
         if hidden_in is None:
-            h = Variable(torch.zeros(self.n_layers, x.size(0), x.size(2), self.h_dim))  # 1 x 10 x 20 x 32
+            h = Variable(torch.zeros(self.n_layers, x.size(0), self.n_obj, self.h_dim))  # 1 x 10 x 19 x 256
         else:
             h = Variable(hidden_in)
         h = h.to(x.device)
 
         for t in range(x.size(1)):
             # reduce the dim of node feature (FC layer)
-            phi_x_t = self.phi_x(x[:, t])  # 10 x 20 x 32
+            x_t = self.phi_x(x[:, t])  # 10 x 20 x 256
+            img_embed = x_t[:, 0, :].unsqueeze(1).repeat(1, self.n_obj, 1).contiguous()  # 10 x 19 x 256
+            x_t = torch.cat([x_t[:, 1:, :], img_embed], dim=-1)  # 10 x 19 x 512
 
-            # message passing cross nodes (GCN) by considering hidden states
-            enc_t = self.enc(torch.cat([phi_x_t, h[-1]], -1), edge_idx_list[:, t], edge_weight=edge_weights[:, t])
-            # compute latent variable z
-            z_t = self.enc_z(enc_t, edge_idx_list[:, t], edge_weight=edge_weights[:, t])
-
-            phi_z_t = self.phi_z(z_t)
+            # GCN encoder
+            enc = self.enc_gcn1(x_t, edge_idx[:, t], edge_weight=edge_weights[:, t])  # 10 x 19 x 256 (512-->256)
+            z_t = self.enc_gcn2(torch.cat([enc, h[-1]], -1), edge_idx[:, t], edge_weight=edge_weights[:, t])  # 10 x 19 x 256 (512-->256)
             
             # decoder
             if self.use_hidden:
-                embed = torch.cat([z_t, h[-1]], -1).view(z_t.size(0), -1)
+                embed = torch.cat([z_t, h[-1]], -1).view(z_t.size(0), -1)  # 10 x (19 x 512)
             else:
-                embed = z_t.view(z_t.size(0), -1)
+                embed = z_t.view(z_t.size(0), -1)  # 10 x (19 x 256)
             dec_t = self.predictor(embed)  # B x 2
 
             # recurrence
-            _, h = self.rnn(torch.cat([phi_x_t, phi_z_t], 2), edge_idx_list[:, t], h)
+            h = self.rnn(torch.cat([x_t, z_t], 2), edge_idx[:, t], h, edge_weight=edge_weights[:, t])  # 640-->256
 
             # computing losses
             if self.loss_func == 'exp':
@@ -430,26 +424,25 @@ class GCRNN(nn.Module):
 
 
 class BayesGCRNN(nn.Module):
-    def __init__(self, x_dim, h_dim, z_dim, n_layers, n_obj=20, eps=1e-10, conv='GCN', bias=False, loss_func='exp', use_hidden=False):
+    def __init__(self, x_dim, h_dim, z_dim, n_layers, n_obj=19, eps=1e-10, conv='GCN', bias=False, loss_func='exp', use_hidden=False):
         super(BayesGCRNN, self).__init__()
 
         self.x_dim = x_dim
         self.eps = eps
-        self.h_dim = h_dim
-        self.z_dim = z_dim
+        self.h_dim = h_dim  # 512 (-->256)
+        self.z_dim = z_dim  # 256 (-->128)
         self.n_layers = n_layers
         self.loss_func = loss_func
         self.use_hidden = use_hidden
         self.n_obj = n_obj
 
         self.phi_x = nn.Sequential(nn.Linear(x_dim, h_dim), nn.ReLU())
-        self.phi_z = nn.Sequential(nn.Linear(z_dim, h_dim), nn.ReLU())
 
         # GCN encoder
         self.enc_gcn1 = GCNConv(h_dim + h_dim, h_dim)
-        self.enc_gcn2 = GCNConv(h_dim, z_dim, act=lambda x: x)
+        self.enc_gcn2 = GCNConv(h_dim + h_dim, z_dim, act=lambda x: x)
         # rnn layer
-        self.rnn = graph_gru_gcn(h_dim + h_dim, h_dim, n_layers, bias)
+        self.rnn = graph_gru_gcn(h_dim + h_dim + z_dim, h_dim, n_layers, bias)
         # BNN decoder
         dim_encode = z_dim + h_dim if use_hidden else z_dim
         self.predictor = BayesianPredictor(n_obj * dim_encode, 2)
@@ -460,9 +453,9 @@ class BayesGCRNN(nn.Module):
         self.reset_parameters(stdv=1e-2)
 
 
-    def forward(self, x, y, edge_idx_list, hidden_in=None, edge_weights=None, npass=2, nbatch=80, testing=False):
+    def forward(self, x, y, graph, hidden_in=None, edge_weights=None, npass=2, nbatch=80, testing=False):
         """
-        :param x, (batchsize, nFrames, nBoxes, Xdim)
+        :param x, (batchsize, nFrames, nBoxes, Xdim) = (10 x 100 x 20 x 4096)
         """
         losses = {'cross_entropy': 0,
                   'log_posterior': 0,
@@ -472,29 +465,30 @@ class BayesGCRNN(nn.Module):
 
         # import ipdb; ipdb.set_trace()
         if hidden_in is None:
-            h = Variable(torch.zeros(self.n_layers, x.size(0), x.size(2), self.h_dim))  # 1 x 10 x 20 x 32
+            h = Variable(torch.zeros(self.n_layers, x.size(0), self.n_obj, self.h_dim))  # 1 x 10 x 19 x 256
         else:
             h = Variable(hidden_in)
         h = h.to(x.device)
 
         for t in range(x.size(1)):
             # reduce the dim of node feature (FC layer)
-            phi_x_t = self.phi_x(x[:, t])  # 10 x 20 x 32
+            x_t = self.phi_x(x[:, t])  # 10 x 20 x 256
+            img_embed = x_t[:, 0, :].unsqueeze(1).repeat(1, self.n_obj, 1).contiguous()  # 10 x 19 x 256
+            x_t = torch.cat([x_t[:, 1:, :], img_embed], dim=-1)  # 10 x 19 x 512
 
             # GCN encoder
-            enc = self.enc_gcn1(torch.cat([phi_x_t, h[-1]], -1), edge_idx_list[:, t], edge_weight=edge_weights[:, t])
-            z_t = self.enc_gcn2(enc, edge_idx_list[:, t], edge_weight=edge_weights[:, t])
+            enc = self.enc_gcn1(x_t, graph[:, t], edge_weight=edge_weights[:, t])  # 10 x 19 x 256 (512-->256)
+            z_t = self.enc_gcn2(torch.cat([enc, h[-1]], -1), graph[:, t], edge_weight=edge_weights[:, t])  # 10 x 19 x 128 (512-->128)
 
             # BNN decoder
             if self.use_hidden:
-                embed = torch.cat([z_t, h[-1]], -1).view(z_t.size(0), -1)
+                embed = torch.cat([z_t, h[-1]], -1).view(z_t.size(0), -1)  # 10 x (19 x 384)
             else:
-                embed = z_t.view(z_t.size(0), -1)
+                embed = z_t.view(z_t.size(0), -1)  # 10 x (19 x 128)
             dec_t, log_prior, log_variational_posterior = self.predictor.sample_elbo(embed, npass=npass, testing=testing)  # B x 2
 
             # recurrence
-            phi_z_t = self.phi_z(z_t)
-            _, h = self.rnn(torch.cat([phi_x_t, phi_z_t], 2), edge_idx_list[:, t], h)
+            h = self.rnn(torch.cat([x_t, z_t], -1), graph[:, t], h, edge_weight=edge_weights[:, t])  # rnn latent (640)-->256
 
             # computing losses
             if self.loss_func == 'exp':

@@ -172,10 +172,10 @@ def test_all(testdata_loader, model, time=90, gpu_ids=[0]):
 
 def train_eval():
     # hyperparameters
-
-    h_dim = p.hidden_dim  # 32
-    z_dim = p.latent_dim  # 16
-    x_dim = p.feature_dim  # 4096
+    if p.feature_name == 'vgg16':
+        feature_dim = 4096 
+    if p.feature_name == 'i3d':
+        feature_dim = 2048
 
     data_path = os.path.join(ROOT_PATH, p.data_path, p.dataset, p.feature_name + '_features')
     # model snapshots
@@ -196,7 +196,7 @@ def train_eval():
     device = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
 
     # building model
-    model = GCRNN(x_dim, h_dim, z_dim, p.num_rnn, conv=p.conv_type, bias=True, loss_func=p.loss_func, use_hidden=p.use_hidden)
+    model = GCRNN(feature_dim, p.hidden_dim, p.latent_dim, p.num_rnn, loss_func=p.loss_func, use_hidden=p.use_hidden)
 
     if len(gpu_ids) > 1:
         model = torch.nn.DataParallel(model)
@@ -260,6 +260,12 @@ def train_eval():
 
 
 def test_eval():
+    # hyperparameters
+    if p.feature_name == 'vgg16':
+        feature_dim = 4096 
+    if p.feature_name == 'i3d':
+        feature_dim = 2048
+
     data_path = os.path.join(ROOT_PATH, p.data_path, p.dataset, p.feature_name + '_features')
     # result path
     result_dir = os.path.join(p.output_dir, p.dataset, 'test')
@@ -296,7 +302,7 @@ def test_eval():
     print("Number of testing samples: %d"%(num_samples))
     
     # building model
-    model = GCRNN(p.feature_dim, p.hidden_dim, p.latent_dim, p.num_rnn, conv=p.conv_type, bias=True, use_hidden=p.use_hidden)
+    model = GCRNN(feature_dim, p.hidden_dim, p.latent_dim, p.num_rnn, use_hidden=p.use_hidden)
     # start to evaluate
     if p.evaluate_all:
         model_dir = os.path.join(p.output_dir, p.dataset, 'snapshot')
@@ -410,25 +416,21 @@ if __name__ == '__main__':
     parser.add_argument('--dataset', type=str, default='dad', choices=['a3d', 'dad'],
                         help='The name of dataset. Default: dad')
     parser.add_argument('--base_lr', type=float, default=1e-3,
-                        help='The base learning rate. Default: 1e-3')
-    parser.add_argument('--epoch', type=int, default=200,
-                        help='The number of training epoches. Default: 200')
-    parser.add_argument('--batch_size', type=int, default=16,
-                        help='The batch size in training process. Default: 16')
+                        help='The base learning rate. Default: 1e-4')
+    parser.add_argument('--epoch', type=int, default=40,
+                        help='The number of training epoches. Default: 40')
+    parser.add_argument('--batch_size', type=int, default=10,
+                        help='The batch size in training process. Default: 10')
     parser.add_argument('--num_rnn', type=int, default=1,
                         help='The number of RNN cells for each timestamp. Default: 1')
     parser.add_argument('--feature_name', type=str, default='vgg16', choices=['vgg16', 'i3d'],
                         help='The name of feature embedding methods. Default: vgg16')
-    parser.add_argument('--conv_type', type=str, default='GCN', choices=['GCN'],
-                        help='The types of graph convolutional neural networks. Default: GCN')
-    parser.add_argument('--test_iter', type=int, default=20,
+    parser.add_argument('--test_iter', type=int, default=64,
                         help='The number of iteration to perform a evaluation process.')
-    parser.add_argument('--hidden_dim', type=int, default=128,
-                        help='The dimension of hidden states in RNN. Default: 128')
-    parser.add_argument('--latent_dim', type=int, default=64,
-                        help='The dimension of latent space. Default: 64')
-    parser.add_argument('--feature_dim', type=int, default=4096,
-                        help='The dimension of node features in graph. Default: 4096')
+    parser.add_argument('--hidden_dim', type=int, default=256,
+                        help='The dimension of hidden states in RNN. Default: 256')
+    parser.add_argument('--latent_dim', type=int, default=256,
+                        help='The dimension of latent space. Default: 256')
     parser.add_argument('--use_hidden', action='store_true',
                         help='If the hidden states are used for decoder. Default: False')
     parser.add_argument('--loss_func', type=str, default='exp', choices=['exp', 'bernoulli'],
