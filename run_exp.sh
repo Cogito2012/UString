@@ -39,6 +39,7 @@ case ${PHASE} in
     CUDA_VISIBLE_DEVICES=$GPUS python GCRNN_accident.py \
       --dataset dad \
       --feature_name $FEATURE \
+      --phase test \
       --batch_size 10 \
       --loss_weight 0.1 \
       --hidden_dim 256 \

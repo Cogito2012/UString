@@ -204,6 +204,7 @@ def train_eval():
     model.train() # set the model into training status
 
     optimizer = torch.optim.Adam(model.parameters(), lr=p.base_lr)
+    scheduler = torch.optim.lr_scheduler.StepLR(optimizer, 17, gamma=0.1, last_epoch=-1)
 
     # create data loader
     if p.dataset == 'dad':
@@ -222,6 +223,8 @@ def train_eval():
 
     iter_cur = 0
     for k in range(p.epoch):
+        # adjust learning rate
+        scheduler.step()
         for i, (batch_xs, batch_ys, graph_edges, edge_weights) in enumerate(traindata_loader):
             # ipdb.set_trace()
             optimizer.zero_grad()
