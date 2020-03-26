@@ -25,11 +25,11 @@ case ${PHASE} in
       --feature_name vgg16 \
       --phase train \
       --base_lr 0.0001 \
-      --batch_size 8 \
+      --batch_size 10 \
       --epoch $EPOCH \
       --test_iter 64 \
-      --loss_weight 0.1 \
-      --hidden_dim 512 \
+      --loss_weight 0.0001 \
+      --hidden_dim 256 \
       --latent_dim 256 \
       --feature_dim 4096 \
       --gpus $GPUS \

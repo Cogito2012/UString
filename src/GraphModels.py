@@ -453,7 +453,7 @@ class BayesGCRNN(nn.Module):
         self.reset_parameters(stdv=1e-2)
 
 
-    def forward(self, x, y, graph, hidden_in=None, edge_weights=None, npass=2, nbatch=80, testing=False):
+    def forward(self, x, y, graph, hidden_in=None, edge_weights=None, npass=2, nbatch=80, testing=False, loss_w=1.0):
         """
         :param x, (batchsize, nFrames, nBoxes, Xdim) = (10 x 100 x 20 x 4096)
         """
@@ -491,13 +491,14 @@ class BayesGCRNN(nn.Module):
             h = self.rnn(torch.cat([x_t, z_t], -1), graph[:, t], h, edge_weight=edge_weights[:, t])  # rnn latent (640)-->256
 
             # computing losses
-            if self.loss_func == 'exp':
-                losses['cross_entropy'] += self._exp_loss(dec_t, y, t)
-            elif self.loss_func == 'bernoulli':
-                pass
-            losses['log_posterior'] += log_variational_posterior / nbatch
-            losses['log_prior'] += log_prior / nbatch
-            losses['total_loss'] = losses['log_posterior'] - losses['log_prior'] + losses['cross_entropy']
+            L1 = log_variational_posterior / nbatch
+            L2 = log_prior / nbatch
+            L3 = self._exp_loss(dec_t, y, t)
+            L = loss_w * (L1 - L2) + L3
+            losses['cross_entropy'] += L3
+            losses['log_posterior'] += L1
+            losses['log_prior'] += L2
+            losses['total_loss'] += L
 
             all_dec.append(dec_t)
             all_hidden.append(h[-1])

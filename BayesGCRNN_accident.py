@@ -205,17 +205,22 @@ def write_scalars(logger, cur_epoch, cur_iter, losses):
 def write_test_scalars(logger, cur_epoch, cur_iter, losses, metrics):
     # fetch results
     total_loss = losses['total_loss'].mean().item()
-    cross_entropy = losses['cross_entropy'].mean().item()
-    log_prior = losses['log_prior'].mean().item()
-    log_posterior = losses['log_posterior'].mean().item()
     # write to tensorboard
     logger.add_scalars("test/losses/total_loss", {'total_loss': total_loss}, cur_iter)
-    logger.add_scalars("test/losses/cross_entropy", {'cross_entropy': cross_entropy}, cur_iter)
-    logger.add_scalars("test/losses/log_posterior", {'log_posterior': log_posterior}, cur_iter)
-    logger.add_scalars("test/losses/log_prior", {'log_prior': log_prior}, cur_iter)
     logger.add_scalars("test/accuracy/AP", {'AP': metrics['AP']}, cur_iter)
     logger.add_scalars("test/accuracy/time-to-accident", {'mTTA': metrics['mTTA'], 
                                                           'TTA_R80': metrics['TTA_R80']}, cur_iter)
+
+
+def write_weight_histograms(writer, net, epoch):
+    writer.add_histogram('histogram/w1_mu', net.predictor.l1.weight_mu, epoch)
+    writer.add_histogram('histogram/w1_rho', net.predictor.l1.weight_rho, epoch)
+    writer.add_histogram('histogram/w2_mu', net.predictor.l2.weight_mu, epoch)
+    writer.add_histogram('histogram/w2_rho', net.predictor.l2.weight_rho, epoch)
+    writer.add_histogram('histogram/b1_mu', net.predictor.l1.bias_mu, epoch)
+    writer.add_histogram('histogram/b1_rho', net.predictor.l1.bias_rho, epoch)
+    writer.add_histogram('histogram/b2_mu', net.predictor.l2.bias_mu, epoch)
+    writer.add_histogram('histogram/b2_rho', net.predictor.l2.bias_rho, epoch)
 
 
 def train_eval():
@@ -252,6 +257,7 @@ def train_eval():
     model.train() # set the model into training status
 
     optimizer = torch.optim.Adam(model.parameters(), lr=p.base_lr)
+    scheduler = torch.optim.lr_scheduler.StepLR(optimizer, 17, gamma=0.1, last_epoch=-1)
 
     # create data loader
     if p.dataset == 'dad':
@@ -267,13 +273,16 @@ def train_eval():
     traindata_loader = DataLoader(dataset=train_data, batch_size=p.batch_size, shuffle=True, drop_last=True)
     testdata_loader = DataLoader(dataset=test_data, batch_size=p.batch_size, shuffle=True, drop_last=True)
 
-
+    # write histograms
+    write_weight_histograms(logger, model, 0)
     iter_cur = 0
     for k in range(p.epoch):
+        # adjust learning rate
+        scheduler.step()
         for i, (batch_xs, batch_ys, graph_edges, edge_weights) in enumerate(traindata_loader):
             # ipdb.set_trace()
             optimizer.zero_grad()
-            losses, predictions, hidden_st = model(batch_xs, batch_ys, graph_edges, edge_weights=edge_weights, npass=2, nbatch=len(traindata_loader))
+            losses, predictions, hidden_st = model(batch_xs, batch_ys, graph_edges, edge_weights=edge_weights, npass=2, nbatch=len(traindata_loader), loss_w=p.loss_weight)
             # backward
             losses['total_loss'].mean().backward()
             # clip gradients
@@ -297,6 +306,9 @@ def train_eval():
                     'model': model.module.state_dict() if len(gpu_ids)>1 else model.state_dict(),
                     'optimizer': optimizer.state_dict()}, model_file)
         print('Model has been saved as: %s'%(model_file))
+        
+        # write histograms
+        write_weight_histograms(logger, model, k+1)
 
     logger.close()
 
@@ -331,7 +343,7 @@ if __name__ == '__main__':
                         help='If the hidden states are used for decoder. Default: False')
     parser.add_argument('--loss_func', type=str, default='exp', choices=['exp', 'bernoulli'],
                         help='The functions of loss for accident prediction. Default: exp')
-    parser.add_argument('--loss_weight', type=float, default=0.1,
+    parser.add_argument('--loss_weight', type=float, default=0.0001,
                         help='The weighting factor of the two loss functions. Default: 0.1')
     parser.add_argument('--gpus', type=str, default="0", 
                         help="The delimited list of GPU IDs separated with comma. Default: '0'.")
