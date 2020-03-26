@@ -44,7 +44,7 @@ case ${PHASE} in
       --loss_weight 0.1 \
       --hidden_dim 256 \
       --latent_dim 256 \
-      --evaluate_all \
+      --gpus $GPUS \
       --visualize \
       --output_dir ./output_dev/gcrnn/$FEATURE \
       --model_file ./output_dev/gcrnn/$FEATURE/dad/snapshot/gcrnn_model_${EPOCH}.pth

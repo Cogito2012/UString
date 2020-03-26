@@ -22,7 +22,7 @@ torch.manual_seed(seed)
 ROOT_PATH = os.path.dirname(__file__)
  
 
-def evaluation(all_pred, all_labels, total_time = 90, vis = False, length = None):
+def evaluation(all_pred, all_labels, total_time = 90, vis_dir = None, length = None):
     ### input: all_pred (N x total_time) , all_label (N,)
     ### where N = number of videos, fps = 20 , time of accident = total_time
     ### output: AP & Time to Accident
@@ -103,21 +103,28 @@ def evaluation(all_pred, all_labels, total_time = 90, vis = False, length = None
     TTA_R80 = sort_time[np.argmin(np.abs(sort_recall-0.8))]
     print("Recall@80%, Time to accident= " +"{:.4}".format(TTA_R80 * 5))
 
-    if vis:
-        plt.plot(new_Recall, new_Precision, label='Precision-Recall curve')
+    if vis_dir is not None:
+        plt.figure()
+        plt.plot(new_Recall, new_Precision, label='Precision Recall curve')
         plt.xlabel('Recall')
         plt.ylabel('Precision')
-        plt.ylim([0.0, 1.05])
+        plt.ylim([0.0, 1.0])
         plt.xlim([0.0, 1.0])
-        plt.title('Precision-Recall example: AUC={0:0.2f}'.format(AP))
-        plt.show()
-        plt.clf()
-        plt.plot(new_Recall, new_Time, label='Recall-mean_time curve')
+        plt.title('Precision Recall Curve: AP={0:0.2f}'.format(AP))
+        plt.grid()
+        plt.tight_layout()
+        plt.savefig(os.path.join(vis_dir, '../PRCurve.png'))
+
+        plt.figure()
+        plt.plot(new_Recall, new_Time, label='TTA Recall curve')
         plt.xlabel('Recall')
         plt.ylabel('time')
         plt.ylim([0.0, 5])
         plt.xlim([0.0, 1.0])
-        plt.title('Recall-mean_time' )
+        plt.title('Time-to-Accident Recall Curves' )
+        plt.grid()
+        plt.tight_layout()
+        plt.savefig(os.path.join(vis_dir, '../PRCurve.png'))
         plt.show()
 
     if mTTA == np.nan:
@@ -325,10 +332,10 @@ def test_eval():
         # print results to file
         print_results(AP_all, mTTA_all, TTA_R80_all, result_dir)
     else:
-        AP, mTTA, TTA_R80 = eval_model(model, p.model_file, testdata_loader, gpu_ids, device, vis_dir=vis_dir)
+        AP, mTTA, TTA_R80 = eval_model(model, p.model_file, testdata_loader, gpu_ids, device, vis_dir=vis_dir, write_res=True)
 
 
-def eval_model(model, weight_file, testdata_loader, gpu_ids, device, vis_dir=None):
+def eval_model(model, weight_file, testdata_loader, gpu_ids, device, vis_dir=None, write_res=False):
     # load the trained model weights
     assert os.path.exists(weight_file)
     checkpoint = torch.load(weight_file)
@@ -375,6 +382,9 @@ def eval_model(model, weight_file, testdata_loader, gpu_ids, device, vis_dir=Non
     # evaluation
     all_pred = np.vstack((np.vstack(all_pred[:-1]), all_pred[-1]))
     all_labels = np.hstack((np.hstack(all_labels[:-1]), all_labels[-1]))
+    if write_res:
+        result_file = os.path.join(vis_dir, "..", "pred_res")
+        np.savez(result_file, pred=all_pred, label=all_labels, total_time=90, vis_dir=vis_dir)
     print('----------------------------------')
     print("Starting evaluation...")
     AP, mTTA, TTA_R80 = evaluation(all_pred, all_labels, total_time=90)
