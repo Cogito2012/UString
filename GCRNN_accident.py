@@ -139,13 +139,16 @@ def test_all(testdata_loader, model, time=90, gpu_ids=[0]):
     
     all_pred = []
     all_labels = []
-    loss_val = 0
+    loss_val, loss_acc_val, loss_aux_val = 0, 0, 0
     for i, (batch_xs, batch_ys, graph_edges, edge_weights) in enumerate(testdata_loader):
         # ipdb.set_trace()
         with torch.no_grad():
-            loss, pred_scores, hiddens = model(batch_xs, batch_ys, graph_edges, hidden_in=None, edge_weights=edge_weights)
+            acc_loss, aux_loss, pred_scores, hiddens = model(batch_xs, batch_ys, graph_edges, hidden_in=None, edge_weights=edge_weights)
+            loss = acc_loss + p.loss_weight * aux_loss
 
         loss_val += loss.mean().item()
+        loss_acc_val += acc_loss.mean().item()
+        loss_aux_val += aux_loss.mean().item()
 
         num_frames = batch_xs.size()[1]
         assert num_frames >= time
@@ -165,6 +168,8 @@ def test_all(testdata_loader, model, time=90, gpu_ids=[0]):
 
     num_batch = i + 1
     loss_val /= num_batch
+    loss_acc_val /= num_batch
+    loss_aux_val /= num_batch
 
     # evaluation
     all_pred = np.vstack((np.vstack(all_pred[:-1]), all_pred[-1]))
@@ -174,7 +179,7 @@ def test_all(testdata_loader, model, time=90, gpu_ids=[0]):
     AP, mTTA, TTA_R80 = evaluation(all_pred, all_labels, total_time=time)
     print('----------------------------------')
     
-    return loss_val, AP, mTTA, TTA_R80
+    return loss_val, loss_acc_val, loss_aux_val, AP, mTTA, TTA_R80
 
 
 def train_eval():
@@ -203,7 +208,7 @@ def train_eval():
     device = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
 
     # building model
-    model = GCRNN(feature_dim, p.hidden_dim, p.latent_dim, p.num_rnn, loss_func=p.loss_func, use_hidden=p.use_hidden)
+    model = GCRNN(feature_dim, p.hidden_dim, p.latent_dim, p.num_rnn, use_hidden=p.use_hidden)
 
     if len(gpu_ids) > 1:
         model = torch.nn.DataParallel(model)
@@ -211,7 +216,7 @@ def train_eval():
     model.train() # set the model into training status
 
     optimizer = torch.optim.Adam(model.parameters(), lr=p.base_lr)
-    scheduler = torch.optim.lr_scheduler.StepLR(optimizer, 17, gamma=0.1, last_epoch=-1)
+    scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='max', factor=0.5, patience=5)
 
     # create data loader
     if p.dataset == 'dad':
@@ -227,16 +232,14 @@ def train_eval():
     traindata_loader = DataLoader(dataset=train_data, batch_size=p.batch_size, shuffle=True, drop_last=True)
     testdata_loader = DataLoader(dataset=test_data, batch_size=p.batch_size, shuffle=True, drop_last=True)
 
-
     iter_cur = 0
     for k in range(p.epoch):
-        # adjust learning rate
-        scheduler.step()
         for i, (batch_xs, batch_ys, graph_edges, edge_weights) in enumerate(traindata_loader):
             # ipdb.set_trace()
             optimizer.zero_grad()
-            loss, predictions, hidden_st = model(batch_xs, batch_ys, graph_edges, edge_weights=edge_weights)
+            acc_loss, aux_loss, predictions, hidden_st = model(batch_xs, batch_ys, graph_edges, edge_weights=edge_weights)
             # backward
+            loss = acc_loss + p.loss_weight * aux_loss
             loss.mean().backward()
             # clip gradients
             torch.nn.utils.clip_grad_norm(model.parameters(), 10)
@@ -245,17 +248,22 @@ def train_eval():
             print('----------------------------------')
             print('epoch: %d, iter: %d' % (k, iter_cur))
             print('loss = %.6f' % (loss.mean().item()))
-            info = {'loss': loss.mean().item()}
+            print('loss_acc = %.6f' % (acc_loss.mean().item()))
+            print('loss_aux = %.6f' % (aux_loss.mean().item()))
+            info = {'loss': loss.mean().item(), 'loss_acc': acc_loss.mean().item(), 'loss_aux': aux_loss.mean().item()}
             logger.add_scalars("losses/train", info, iter_cur)
+            lr = optimizer.param_groups[0]['lr']
+            logger.add_scalar("others/learning_rate", lr, iter_cur)
             
             iter_cur += 1
             # test and evaluate the model
             if iter_cur % p.test_iter == 0:
                 model.eval()
-                loss_val, AP, mTTA, TTA_R80 = test_all(testdata_loader, model, time=90, gpu_ids=gpu_ids)
+                loss_val, loss_acc_val, loss_aux_val, AP, mTTA, TTA_R80 = test_all(testdata_loader, model, time=90, gpu_ids=gpu_ids)
                 model.train()
                 # keep track of validation losses
-                logger.add_scalars("losses/val", {'loss': loss_val}, iter_cur)
+                info_losses = {'loss_total': loss_val, 'loss_acc': loss_acc_val, 'loss_aux': loss_aux_val}
+                logger.add_scalars("losses/val_total", info_losses, iter_cur)
                 logger.add_scalars("accuracy/val", {'AP': AP}, iter_cur)
                 logger.add_scalars("time-to-accident/val", {'mTTA': mTTA, 'TTA_R80': TTA_R80}, iter_cur)
 
@@ -265,6 +273,9 @@ def train_eval():
                     'model': model.module.state_dict() if len(gpu_ids)>1 else model.state_dict(),
                     'optimizer': optimizer.state_dict()}, model_file)
         print('Model has been saved as: %s'%(model_file))
+
+        # adjust learning rate, using AP as monitor
+        scheduler.step(AP)
 
     logger.close()
 
@@ -446,8 +457,6 @@ if __name__ == '__main__':
                         help='The dimension of latent space. Default: 256')
     parser.add_argument('--use_hidden', action='store_true',
                         help='If the hidden states are used for decoder. Default: False')
-    parser.add_argument('--loss_func', type=str, default='exp', choices=['exp', 'bernoulli'],
-                        help='The functions of loss for accident prediction. Default: exp')
     parser.add_argument('--loss_weight', type=float, default=0.1,
                         help='The weighting factor of the two loss functions. Default: 0.1')
     parser.add_argument('--gpus', type=str, default="0", 

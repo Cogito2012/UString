@@ -6,7 +6,7 @@ source activate py37
 PHASE=$1
 GPUS=$2
 EPOCH=$3
-FEATURE=$4
+FEATURE=vgg16
 
 LOG_DIR="./logs"
 if [ ! -d $LOG_DIR ]; then
@@ -29,11 +29,10 @@ case ${PHASE} in
       --batch_size 10 \
       --epoch $EPOCH \
       --test_iter 64 \
-      --loss_weight 0.1 \
       --hidden_dim 256 \
       --latent_dim 256 \
       --gpus $GPUS \
-      --output_dir ./output_dev/gcrnn/$FEATURE
+      --output_dir ./output_dev/gcrnn_auxloss/$FEATURE
     ;;
   test)
     CUDA_VISIBLE_DEVICES=$GPUS python GCRNN_accident.py \
@@ -41,13 +40,12 @@ case ${PHASE} in
       --feature_name $FEATURE \
       --phase test \
       --batch_size 10 \
-      --loss_weight 0.1 \
       --hidden_dim 256 \
       --latent_dim 256 \
       --gpus $GPUS \
       --visualize \
-      --output_dir ./output_dev/gcrnn/$FEATURE \
-      --model_file ./output_dev/gcrnn/$FEATURE/dad/snapshot/gcrnn_model_${EPOCH}.pth
+      --output_dir ./output_dev/gcrnn_auxloss/$FEATURE \
+      --model_file ./output_dev/gcrnn_auxloss/$FEATURE/dad/snapshot/gcrnn_model_${EPOCH}.pth
     ;;
   *)
     echo "Invalid argument!"
