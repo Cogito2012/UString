@@ -41,8 +41,8 @@ def evaluation(all_pred, all_labels, total_time = 90, vis_dir = None, length = N
     Time = np.zeros((temp_shape))
     cnt = 0
     AP = 0.0
-    for Th in sorted(all_pred.flatten()):
-        if length is not None and Th == 0:
+    for Th in np.arange(np.min(all_pred), 1.0, 0.001):
+        if length is not None and Th <= 0:
                 continue
         Tp = 0.0
         Tp_Fp = 0.0
@@ -57,17 +57,14 @@ def evaluation(all_pred, all_labels, total_time = 90, vis_dir = None, length = N
                 counter = counter+1
             Tp_Fp += float(len(np.where(all_pred[i]>=Th)[0])>0)
         if Tp_Fp == 0:
-            # Precision[cnt] = np.nan
             continue
         else:
             Precision[cnt] = Tp/Tp_Fp
         if np.sum(all_labels) ==0:
-            # Recall[cnt] = np.nan
             continue
         else:
             Recall[cnt] = Tp/np.sum(all_labels)
         if counter == 0:
-            # Time[cnt] = np.nan
             continue
         else:
             Time[cnt] = (1-time/counter)
@@ -78,6 +75,7 @@ def evaluation(all_pred, all_labels, total_time = 90, vis_dir = None, length = N
     Recall = Recall[new_index]
     Time = Time[new_index]
     _,rep_index = np.unique(Recall,return_index=1)
+    rep_index = rep_index[1:]
     new_Time = np.zeros(len(rep_index))
     new_Precision = np.zeros(len(rep_index))
     for i in range(len(rep_index)-1):
@@ -87,9 +85,6 @@ def evaluation(all_pred, all_labels, total_time = 90, vis_dir = None, length = N
     new_Time[-1] = Time[rep_index[-1]]
     new_Precision[-1] = Precision[rep_index[-1]]
     new_Recall = Recall[rep_index]
-    new_Time = new_Time[~np.isnan(new_Precision)]
-    new_Recall = new_Recall[~np.isnan(new_Precision)]
-    new_Precision = new_Precision[~np.isnan(new_Precision)]
 
     if new_Recall[0] != 0:
         AP += new_Precision[0]*(new_Recall[0]-0)
@@ -208,15 +203,21 @@ def train_eval():
     device = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
 
     # building model
-    model = GCRNN(feature_dim, p.hidden_dim, p.latent_dim, p.num_rnn, use_hidden=p.use_hidden)
+    model = GCRNN(feature_dim, p.hidden_dim, p.latent_dim, p.num_rnn)
+
+    # optimizer
+    optimizer = torch.optim.Adam(model.parameters(), lr=p.base_lr)
+    scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='max', factor=0.5, patience=5)
+
+    # resume training 
+    start_epoch = 0
+    if p.resume:
+        model, optimizer, logger, start_epoch = load_checkpoint(model, optimizer, filename=p.model_file)
 
     if len(gpu_ids) > 1:
         model = torch.nn.DataParallel(model)
     model = model.to(device=device)
     model.train() # set the model into training status
-
-    optimizer = torch.optim.Adam(model.parameters(), lr=p.base_lr)
-    scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='max', factor=0.5, patience=5)
 
     # create data loader
     if p.dataset == 'dad':
@@ -234,6 +235,9 @@ def train_eval():
 
     iter_cur = 0
     for k in range(p.epoch):
+        if k <= start_epoch:
+            iter_cur += len(traindata_loader)
+            continue
         for i, (batch_xs, batch_ys, graph_edges, edge_weights) in enumerate(traindata_loader):
             # ipdb.set_trace()
             optimizer.zero_grad()
@@ -271,7 +275,8 @@ def train_eval():
         model_file = os.path.join(model_dir, 'gcrnn_model_%02d.pth'%(k))
         torch.save({'epoch': k,
                     'model': model.module.state_dict() if len(gpu_ids)>1 else model.state_dict(),
-                    'optimizer': optimizer.state_dict()}, model_file)
+                    'optimizer': optimizer.state_dict(),
+                    'logger': logger}, model_file)
         print('Model has been saved as: %s'%(model_file))
 
         # adjust learning rate, using AP as monitor
@@ -323,7 +328,7 @@ def test_eval():
     print("Number of testing samples: %d"%(num_samples))
     
     # building model
-    model = GCRNN(feature_dim, p.hidden_dim, p.latent_dim, p.num_rnn, use_hidden=p.use_hidden)
+    model = GCRNN(feature_dim, p.hidden_dim, p.latent_dim, p.num_rnn)
     # start to evaluate
     if p.evaluate_all:
         model_dir = os.path.join(p.output_dir, p.dataset, 'snapshot')
@@ -455,8 +460,6 @@ if __name__ == '__main__':
                         help='The dimension of hidden states in RNN. Default: 256')
     parser.add_argument('--latent_dim', type=int, default=256,
                         help='The dimension of latent space. Default: 256')
-    parser.add_argument('--use_hidden', action='store_true',
-                        help='If the hidden states are used for decoder. Default: False')
     parser.add_argument('--loss_weight', type=float, default=0.1,
                         help='The weighting factor of the two loss functions. Default: 0.1')
     parser.add_argument('--gpus', type=str, default="0", 
@@ -467,6 +470,8 @@ if __name__ == '__main__':
                         help='Whether to evaluate models of all epoches. Default: False')
     parser.add_argument('--visualize', action='store_true',
                         help='The visualization flag. Default: False')
+    parser.add_argument('--resume', action='store_true',
+                        help='If to resume the training. Default: False')
     parser.add_argument('--model_file', type=str, default='./output/dad/snapshot/gcrnn_model_90.pth',
                         help='The trained GCRNN model file for demo test only.')
     parser.add_argument('--output_dir', type=str, default='./output',

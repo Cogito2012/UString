@@ -21,8 +21,8 @@ def evaluation(all_pred, all_labels, total_time = 90, length = None):
     Time = np.zeros((temp_shape))
     cnt = 0
     AP = 0.0
-    for Th in sorted(all_pred.flatten()):
-        if length is not None and Th == 0:
+    for Th in np.arange(np.min(all_pred), 1.0, 0.001):
+        if length is not None and Th <= 0:
                 continue
         Tp = 0.0
         Tp_Fp = 0.0
@@ -37,17 +37,14 @@ def evaluation(all_pred, all_labels, total_time = 90, length = None):
                 counter = counter+1
             Tp_Fp += float(len(np.where(all_pred[i]>=Th)[0])>0)
         if Tp_Fp == 0:
-            # Precision[cnt] = np.nan
             continue
         else:
             Precision[cnt] = Tp/Tp_Fp
         if np.sum(all_labels) ==0:
-            # Recall[cnt] = np.nan
             continue
         else:
             Recall[cnt] = Tp/np.sum(all_labels)
         if counter == 0:
-            # Time[cnt] = np.nan
             continue
         else:
             Time[cnt] = (1-time/counter)
@@ -58,6 +55,7 @@ def evaluation(all_pred, all_labels, total_time = 90, length = None):
     Recall = Recall[new_index]
     Time = Time[new_index]
     _,rep_index = np.unique(Recall,return_index=1)
+    rep_index = rep_index[1:]
     new_Time = np.zeros(len(rep_index))
     new_Precision = np.zeros(len(rep_index))
     for i in range(len(rep_index)-1):
@@ -67,9 +65,6 @@ def evaluation(all_pred, all_labels, total_time = 90, length = None):
     new_Time[-1] = Time[rep_index[-1]]
     new_Precision[-1] = Precision[rep_index[-1]]
     new_Recall = Recall[rep_index]
-    new_Time = new_Time[~np.isnan(new_Precision)]
-    new_Recall = new_Recall[~np.isnan(new_Precision)]
-    new_Precision = new_Precision[~np.isnan(new_Precision)]
 
     return new_Precision, new_Recall, new_Time
 

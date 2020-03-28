@@ -25,7 +25,8 @@ case ${PHASE} in
       --dataset dad \
       --feature_name $FEATURE \
       --phase train \
-      --base_lr 0.0001 \
+      --base_lr 0.0005 \
+      --loss_weight 10 \
       --batch_size 10 \
       --epoch $EPOCH \
       --test_iter 64 \

@@ -260,21 +260,21 @@ class graph_gru_gcn(nn.Module):
 
 
 class AccidentPredictor(nn.Module):
-    def __init__(self, input_dim, output_dim=2, act=torch.relu, dropout=0.):
+    def __init__(self, input_dim, output_dim=2, act=torch.relu, dropout=[0, 0]):
         super(AccidentPredictor, self).__init__()
 		
         self.act = act
         self.dropout = dropout
-        self.dense1 = torch.nn.Linear(input_dim, 32)
-        self.dense2 = torch.nn.Linear(32, output_dim)
+        self.dense1 = torch.nn.Linear(input_dim, 64)
+        self.dense2 = torch.nn.Linear(64, output_dim)
 
         self.reset_parameters(stdv=1e-2)
 
 	
     def forward(self, x):
-        x = F.dropout(x, self.dropout, training=self.training)
+        x = F.dropout(x, self.dropout[0], training=self.training)
         x = self.act(self.dense1(x))
-        x = F.dropout(x, self.dropout, training=self.training)
+        x = F.dropout(x, self.dropout[1], training=self.training)
         x = self.dense2(x)
 
         return x
@@ -323,15 +323,13 @@ class BayesianPredictor(nn.Module):
 # GCRNN model
 
 class GCRNN(nn.Module):
-    def __init__(self, x_dim, h_dim, z_dim, n_layers, n_obj=19, n_frames=100, eps=1e-10, use_hidden=False):
+    def __init__(self, x_dim, h_dim, z_dim, n_layers=1, n_obj=19, n_frames=100):
         super(GCRNN, self).__init__()
 
         self.x_dim = x_dim
-        self.eps = eps
         self.h_dim = h_dim
         self.z_dim = z_dim
         self.n_layers = n_layers
-        self.use_hidden = use_hidden
         self.n_obj = n_obj
         self.n_frames = n_frames
 
@@ -342,12 +340,11 @@ class GCRNN(nn.Module):
 
         self.rnn = graph_gru_gcn(h_dim + h_dim + z_dim, h_dim, n_layers, bias=True)
 
-        dim_encode = z_dim + h_dim if use_hidden else z_dim
-        self.predictor = AccidentPredictor(n_obj * dim_encode, 2, dropout=0.5)
+        self.predictor = AccidentPredictor(n_obj * z_dim, 2, dropout=[0.5, 0.1])
         self.ce_loss = torch.nn.CrossEntropyLoss(reduction='none')
 
         self.soft_aggregation = SoftAggregate(self.n_frames)
-        self.predictor_aux = AccidentPredictor(h_dim + h_dim, 2, dropout=0.1)
+        self.predictor_aux = AccidentPredictor(h_dim + h_dim, 2, dropout=[0.5, 0.0])
 
         self.reset_parameters(stdv=1e-2)
 
@@ -377,10 +374,7 @@ class GCRNN(nn.Module):
             z_t = self.enc_gcn2(torch.cat([enc, h[-1]], -1), edge_idx[:, t], edge_weight=edge_weights[:, t])  # 10 x 19 x 256 (512-->256)
             
             # decoder
-            if self.use_hidden:
-                embed = torch.cat([z_t, h[-1]], -1).view(z_t.size(0), -1)  # 10 x (19 x 512)
-            else:
-                embed = z_t.view(z_t.size(0), -1)  # 10 x (19 x 256)
+            embed = z_t.view(z_t.size(0), -1)  # 10 x (19 x 256)
             dec_t = self.predictor(embed)  # B x 2
 
             # recurrence
