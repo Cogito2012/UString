@@ -24,17 +24,15 @@ case ${PHASE} in
       --dataset dad \
       --feature_name vgg16 \
       --phase train \
-      --base_lr 0.0001 \
+      --base_lr 0.0005 \
       --batch_size 10 \
       --epoch $EPOCH \
       --test_iter 64 \
-      --loss_weight 0.0001 \
+      --loss_weight 0.001 \
       --hidden_dim 256 \
       --latent_dim 256 \
       --feature_dim 4096 \
       --gpus $GPUS \
-      --resume \
-      --model_file ./output_dev/bayes_gcrnn/vgg16/dad/snapshot/bayesian_gcrnn_model_14.pth \
       --output_dir ./output_dev/bayes_gcrnn/vgg16
     ;;
   test)

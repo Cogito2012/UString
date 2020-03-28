@@ -41,8 +41,8 @@ def evaluation(all_pred, all_labels, total_time = 90, vis = False, length = None
     Time = np.zeros((temp_shape))
     cnt = 0
     AP = 0.0
-    for Th in sorted(all_pred.flatten()):
-        if length is not None and Th == 0:
+    for Th in np.arange(np.min(all_pred), 1.0, 0.001):
+        if length is not None and Th <= 0:
                 continue
         Tp = 0.0
         Tp_Fp = 0.0
@@ -57,17 +57,14 @@ def evaluation(all_pred, all_labels, total_time = 90, vis = False, length = None
                 counter = counter+1
             Tp_Fp += float(len(np.where(all_pred[i]>=Th)[0])>0)
         if Tp_Fp == 0:
-            # Precision[cnt] = np.nan
             continue
         else:
             Precision[cnt] = Tp/Tp_Fp
         if np.sum(all_labels) ==0:
-            # Recall[cnt] = np.nan
             continue
         else:
             Recall[cnt] = Tp/np.sum(all_labels)
         if counter == 0:
-            # Time[cnt] = np.nan
             continue
         else:
             Time[cnt] = (1-time/counter)
@@ -78,6 +75,7 @@ def evaluation(all_pred, all_labels, total_time = 90, vis = False, length = None
     Recall = Recall[new_index]
     Time = Time[new_index]
     _,rep_index = np.unique(Recall,return_index=1)
+    rep_index = rep_index[1:]
     new_Time = np.zeros(len(rep_index))
     new_Precision = np.zeros(len(rep_index))
     for i in range(len(rep_index)-1):
@@ -87,9 +85,6 @@ def evaluation(all_pred, all_labels, total_time = 90, vis = False, length = None
     new_Time[-1] = Time[rep_index[-1]]
     new_Precision[-1] = Precision[rep_index[-1]]
     new_Recall = Recall[rep_index]
-    new_Time = new_Time[~np.isnan(new_Precision)]
-    new_Recall = new_Recall[~np.isnan(new_Precision)]
-    new_Precision = new_Precision[~np.isnan(new_Precision)]
 
     if new_Recall[0] != 0:
         AP += new_Precision[0]*(new_Recall[0]-0)
@@ -112,7 +107,7 @@ def evaluation(all_pred, all_labels, total_time = 90, vis = False, length = None
         plt.title('Precision-Recall example: AUC={0:0.2f}'.format(AP))
         plt.show()
         plt.clf()
-        plt.plot(new_Recall, new_Time, label='Recall-mean_time curve')
+        plt.plot(new_Recall, new_Time, label='TTA Recall curve')
         plt.xlabel('Recall')
         plt.ylabel('time')
         plt.ylim([0.0, 5])
@@ -232,7 +227,6 @@ def load_checkpoint(model, optimizer, filename='checkpoint.pth.tar', device=torc
         start_epoch = checkpoint['epoch']
         model.load_state_dict(checkpoint['model'])
         optimizer.load_state_dict(checkpoint['optimizer'])
-        logger = checkpoint['logger']
         # for state in optimizer.state.values():
         #     for k, v in state.items():
         #         if isinstance(v, torch.Tensor):
@@ -241,7 +235,7 @@ def load_checkpoint(model, optimizer, filename='checkpoint.pth.tar', device=torc
     else:
         print("=> no checkpoint found at '{}'".format(filename))
 
-    return model, optimizer, logger, start_epoch
+    return model, optimizer, start_epoch
 
 
 def train_eval():
@@ -270,7 +264,7 @@ def train_eval():
     device = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
 
     # building model
-    model = BayesGCRNN(x_dim, h_dim, z_dim, p.num_rnn, conv=p.conv_type, bias=True, loss_func=p.loss_func, use_hidden=p.use_hidden)
+    model = BayesGCRNN(x_dim, h_dim, z_dim, p.num_rnn)
 
     # optimizer
     optimizer = torch.optim.Adam(model.parameters(), lr=p.base_lr)
@@ -279,7 +273,7 @@ def train_eval():
     # resume training 
     start_epoch = 0
     if p.resume:
-        model, optimizer, logger, start_epoch = load_checkpoint(model, optimizer, filename=p.model_file)
+        model, optimizer, start_epoch = load_checkpoint(model, optimizer, filename=p.model_file)
 
     if len(gpu_ids) > 1:
         model = torch.nn.DataParallel(model)
@@ -360,8 +354,6 @@ if __name__ == '__main__':
                         help='The number of RNN cells for each timestamp. Default: 1')
     parser.add_argument('--feature_name', type=str, default='vgg16', choices=['vgg16', 'i3d'],
                         help='The name of feature embedding methods. Default: vgg16')
-    parser.add_argument('--conv_type', type=str, default='GCN', choices=['GCN'],
-                        help='The types of graph convolutional neural networks. Default: GCN')
     parser.add_argument('--test_iter', type=int, default=20,
                         help='The number of iteration to perform a evaluation process.')
     parser.add_argument('--hidden_dim', type=int, default=128,
@@ -370,10 +362,6 @@ if __name__ == '__main__':
                         help='The dimension of latent space. Default: 64')
     parser.add_argument('--feature_dim', type=int, default=4096,
                         help='The dimension of node features in graph. Default: 4096')
-    parser.add_argument('--use_hidden', action='store_true',
-                        help='If the hidden states are used for decoder. Default: False')
-    parser.add_argument('--loss_func', type=str, default='exp', choices=['exp', 'bernoulli'],
-                        help='The functions of loss for accident prediction. Default: exp')
     parser.add_argument('--loss_weight', type=float, default=0.0001,
                         help='The weighting factor of the two loss functions. Default: 0.1')
     parser.add_argument('--gpus', type=str, default="0", 

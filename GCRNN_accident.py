@@ -177,6 +177,23 @@ def test_all(testdata_loader, model, time=90, gpu_ids=[0]):
     return loss_val, loss_acc_val, loss_aux_val, AP, mTTA, TTA_R80
 
 
+
+def load_checkpoint(model, optimizer, filename='checkpoint.pth.tar', device=torch.device('cuda')):
+    # Note: Input model & optimizer should be pre-defined.  This routine only updates their states.
+    start_epoch = 0
+    if os.path.isfile(filename):
+        print("=> loading checkpoint '{}'".format(filename))
+        checkpoint = torch.load(filename)
+        start_epoch = checkpoint['epoch']
+        model.load_state_dict(checkpoint['model'])
+        optimizer.load_state_dict(checkpoint['optimizer'])
+        print("=> loaded checkpoint '{}' (epoch {})".format(filename, checkpoint['epoch']))
+    else:
+        print("=> no checkpoint found at '{}'".format(filename))
+
+    return model, optimizer, start_epoch
+
+
 def train_eval():
     # hyperparameters
     if p.feature_name == 'vgg16':
@@ -212,7 +229,7 @@ def train_eval():
     # resume training 
     start_epoch = 0
     if p.resume:
-        model, optimizer, logger, start_epoch = load_checkpoint(model, optimizer, filename=p.model_file)
+        model, optimizer, start_epoch = load_checkpoint(model, optimizer, filename=p.model_file)
 
     if len(gpu_ids) > 1:
         model = torch.nn.DataParallel(model)
@@ -275,8 +292,7 @@ def train_eval():
         model_file = os.path.join(model_dir, 'gcrnn_model_%02d.pth'%(k))
         torch.save({'epoch': k,
                     'model': model.module.state_dict() if len(gpu_ids)>1 else model.state_dict(),
-                    'optimizer': optimizer.state_dict(),
-                    'logger': logger}, model_file)
+                    'optimizer': optimizer.state_dict()}, model_file)
         print('Model has been saved as: %s'%(model_file))
 
         # adjust learning rate, using AP as monitor

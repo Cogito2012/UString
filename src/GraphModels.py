@@ -288,8 +288,8 @@ class BayesianPredictor(nn.Module):
     def __init__(self, input_dim, output_dim=2, act=torch.relu, pi=0.5, sigma_1=None, sigma_2=None):
         super(BayesianPredictor, self).__init__()
         self.act = act
-        self.l1 = BayesianLinear(input_dim, 32, pi=pi, sigma_1=sigma_1, sigma_2=sigma_2)
-        self.l2 = BayesianLinear(32, output_dim, pi=pi, sigma_1=sigma_1, sigma_2=sigma_2)
+        self.l1 = BayesianLinear(input_dim, 64, pi=pi, sigma_1=sigma_1, sigma_2=sigma_2)
+        self.l2 = BayesianLinear(64, output_dim, pi=pi, sigma_1=sigma_1, sigma_2=sigma_2)
 
     def forward(self, x, sample=False):
         x = self.act(self.l1(x, sample))
@@ -422,16 +422,13 @@ class GCRNN(nn.Module):
 
 
 class BayesGCRNN(nn.Module):
-    def __init__(self, x_dim, h_dim, z_dim, n_layers, n_obj=19, eps=1e-10, conv='GCN', bias=False, loss_func='exp', use_hidden=False):
+    def __init__(self, x_dim, h_dim, z_dim, n_layers=1, n_obj=19):
         super(BayesGCRNN, self).__init__()
 
         self.x_dim = x_dim
-        self.eps = eps
         self.h_dim = h_dim  # 512 (-->256)
         self.z_dim = z_dim  # 256 (-->128)
         self.n_layers = n_layers
-        self.loss_func = loss_func
-        self.use_hidden = use_hidden
         self.n_obj = n_obj
 
         self.phi_x = nn.Sequential(nn.Linear(x_dim, h_dim), nn.ReLU())
@@ -440,10 +437,9 @@ class BayesGCRNN(nn.Module):
         self.enc_gcn1 = GCNConv(h_dim + h_dim, h_dim)
         self.enc_gcn2 = GCNConv(h_dim + h_dim, z_dim, act=lambda x: x)
         # rnn layer
-        self.rnn = graph_gru_gcn(h_dim + h_dim + z_dim, h_dim, n_layers, bias)
+        self.rnn = graph_gru_gcn(h_dim + h_dim + z_dim, h_dim, n_layers, bias=True)
         # BNN decoder
-        dim_encode = z_dim + h_dim if use_hidden else z_dim
-        self.predictor = BayesianPredictor(n_obj * dim_encode, 2)
+        self.predictor = BayesianPredictor(n_obj * z_dim, 2)
         
         # loss function
         self.ce_loss = torch.nn.CrossEntropyLoss(reduction='none')
@@ -479,10 +475,7 @@ class BayesGCRNN(nn.Module):
             z_t = self.enc_gcn2(torch.cat([enc, h[-1]], -1), graph[:, t], edge_weight=edge_weights[:, t])  # 10 x 19 x 128 (512-->128)
 
             # BNN decoder
-            if self.use_hidden:
-                embed = torch.cat([z_t, h[-1]], -1).view(z_t.size(0), -1)  # 10 x (19 x 384)
-            else:
-                embed = z_t.view(z_t.size(0), -1)  # 10 x (19 x 128)
+            embed = z_t.view(z_t.size(0), -1)  # 10 x (19 x 128)
             dec_t, log_prior, log_variational_posterior = self.predictor.sample_elbo(embed, npass=npass, testing=testing)  # B x 2
 
             # recurrence
