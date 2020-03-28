@@ -443,8 +443,8 @@ class BayesGCRNN(nn.Module):
         
         # loss function
         self.ce_loss = torch.nn.CrossEntropyLoss(reduction='none')
-        # intialize parameters
-        self.reset_parameters(stdv=1e-2)
+        # # intialize parameters
+        # self.reset_parameters(stdv=1e-2)
 
 
     def forward(self, x, y, graph, hidden_in=None, edge_weights=None, npass=2, nbatch=80, testing=False, loss_w=1.0):
