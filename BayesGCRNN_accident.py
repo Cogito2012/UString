@@ -223,6 +223,27 @@ def write_weight_histograms(writer, net, epoch):
     writer.add_histogram('histogram/b2_rho', net.predictor.l2.bias_rho, epoch)
 
 
+def load_checkpoint(model, optimizer, filename='checkpoint.pth.tar', device=torch.device('cuda')):
+    # Note: Input model & optimizer should be pre-defined.  This routine only updates their states.
+    start_epoch = 0
+    if os.path.isfile(filename):
+        print("=> loading checkpoint '{}'".format(filename))
+        checkpoint = torch.load(filename)
+        start_epoch = checkpoint['epoch']
+        model.load_state_dict(checkpoint['model'])
+        optimizer.load_state_dict(checkpoint['optimizer'])
+        logger = checkpoint['logger']
+        # for state in optimizer.state.values():
+        #     for k, v in state.items():
+        #         if isinstance(v, torch.Tensor):
+        #             state[k] = v.to(device)
+        print("=> loaded checkpoint '{}' (epoch {})".format(filename, checkpoint['epoch']))
+    else:
+        print("=> no checkpoint found at '{}'".format(filename))
+
+    return model, optimizer, logger, start_epoch
+
+
 def train_eval():
     # hyperparameters
 
@@ -251,13 +272,19 @@ def train_eval():
     # building model
     model = BayesGCRNN(x_dim, h_dim, z_dim, p.num_rnn, conv=p.conv_type, bias=True, loss_func=p.loss_func, use_hidden=p.use_hidden)
 
+    # optimizer
+    optimizer = torch.optim.Adam(model.parameters(), lr=p.base_lr)
+    scheduler = torch.optim.lr_scheduler.StepLR(optimizer, 17, gamma=0.1, last_epoch=-1)
+
+    # resume training 
+    start_epoch = 0
+    if p.resume:
+        model, optimizer, logger, start_epoch = load_checkpoint(model, optimizer, filename=p.model_file)
+
     if len(gpu_ids) > 1:
         model = torch.nn.DataParallel(model)
     model = model.to(device=device)
     model.train() # set the model into training status
-
-    optimizer = torch.optim.Adam(model.parameters(), lr=p.base_lr)
-    scheduler = torch.optim.lr_scheduler.StepLR(optimizer, 17, gamma=0.1, last_epoch=-1)
 
     # create data loader
     if p.dataset == 'dad':
@@ -277,6 +304,9 @@ def train_eval():
     write_weight_histograms(logger, model, 0)
     iter_cur = 0
     for k in range(p.epoch):
+        if k <= start_epoch:
+            iter_cur += len(traindata_loader)
+            continue
         # adjust learning rate
         scheduler.step()
         for i, (batch_xs, batch_ys, graph_edges, edge_weights) in enumerate(traindata_loader):
@@ -304,7 +334,8 @@ def train_eval():
         model_file = os.path.join(model_dir, 'bayesian_gcrnn_model_%02d.pth'%(k))
         torch.save({'epoch': k,
                     'model': model.module.state_dict() if len(gpu_ids)>1 else model.state_dict(),
-                    'optimizer': optimizer.state_dict()}, model_file)
+                    'optimizer': optimizer.state_dict(),
+                    'logger': logger}, model_file)
         print('Model has been saved as: %s'%(model_file))
         
         # write histograms
@@ -353,6 +384,8 @@ if __name__ == '__main__':
                         help='Whether to evaluate models of all epoches. Default: False')
     parser.add_argument('--visualize', action='store_true',
                         help='The visualization flag. Default: False')
+    parser.add_argument('--resume', action='store_true',
+                        help='If to resume the training. Default: False')
     parser.add_argument('--model_file', type=str, default='./output_debug/bayes_gcrnn/vgg16/dad/snapshot/gcrnn_model_90.pth',
                         help='The trained GCRNN model file for demo test only.')
     parser.add_argument('--output_dir', type=str, default='./output_debug/bayes_gcrnn/vgg16',

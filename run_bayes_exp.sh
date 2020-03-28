@@ -33,6 +33,8 @@ case ${PHASE} in
       --latent_dim 256 \
       --feature_dim 4096 \
       --gpus $GPUS \
+      --resume \
+      --model_file ./output_dev/bayes_gcrnn/vgg16/dad/snapshot/bayesian_gcrnn_model_14.pth \
       --output_dir ./output_dev/bayes_gcrnn/vgg16
     ;;
   test)
