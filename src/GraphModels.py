@@ -14,6 +14,7 @@ from torch.autograd import Variable
 import torch.nn.functional as F
 from src.BayesModels import BayesianLinear
 
+
 class MessagePassing(torch.nn.Module):
     r"""Base class for creating message passing layers
     .. math::
@@ -262,26 +263,45 @@ class graph_gru_gcn(nn.Module):
 class AccidentPredictor(nn.Module):
     def __init__(self, input_dim, output_dim=2, act=torch.relu, dropout=[0, 0]):
         super(AccidentPredictor, self).__init__()
-		
         self.act = act
         self.dropout = dropout
         self.dense1 = torch.nn.Linear(input_dim, 64)
         self.dense2 = torch.nn.Linear(64, output_dim)
-
-        self.reset_parameters(stdv=1e-2)
-
 	
     def forward(self, x):
         x = F.dropout(x, self.dropout[0], training=self.training)
         x = self.act(self.dense1(x))
         x = F.dropout(x, self.dropout[1], training=self.training)
         x = self.dense2(x)
-
         return x
-    
-    def reset_parameters(self, stdv=1e-1):
-        for weight in self.parameters():
-            weight.data.normal_(0, stdv)
+
+
+class SoftAggregate(torch.nn.Module):
+    def __init__(self, agg_dim):
+        super(SoftAggregate, self).__init__()
+        self.agg_dim = agg_dim
+        self.weight = nn.Parameter(torch.Tensor(agg_dim, 1))  # (100, 1)
+        self.softmax = nn.Softmax(dim=-1)
+        # initialize parameters
+        import math
+        torch.nn.init.kaiming_normal_(self.weight, a=math.sqrt(5))
+
+    def forward(self, hiddens):
+        """
+        hiddens: (10, 19, 256, 100)
+        """
+        maxpool = torch.max(hiddens, dim=1)[0]  # (10, 256, 100)
+        avgpool = torch.mean(hiddens, dim=1)    # (10, 256, 100)
+        agg_spatial = torch.cat((avgpool, maxpool), dim=1)  # (10, 512, 100)
+
+        # soft-attention
+        energy = torch.bmm(agg_spatial.permute([0, 2, 1]), agg_spatial)  # (10, 100, 100)
+        attention = self.softmax(energy)
+        weighted_feat = torch.bmm(attention, agg_spatial.permute([0, 2, 1]))  # (10, 100, 512)
+        weight = self.weight.unsqueeze(0).repeat([hiddens.size(0), 1, 1])
+        agg_feature = torch.bmm(weighted_feat.permute([0, 2, 1]), weight)  # (10, 512, 1)
+
+        return agg_feature.squeeze(dim=-1)  # (10, 512)
 
 
 class BayesianPredictor(nn.Module):
@@ -321,7 +341,6 @@ class BayesianPredictor(nn.Module):
 
 
 # GCRNN model
-
 class GCRNN(nn.Module):
     def __init__(self, x_dim, h_dim, z_dim, n_layers=1, n_obj=19, n_frames=100):
         super(GCRNN, self).__init__()
@@ -345,8 +364,6 @@ class GCRNN(nn.Module):
 
         self.soft_aggregation = SoftAggregate(self.n_frames)
         self.predictor_aux = AccidentPredictor(h_dim + h_dim, 2, dropout=[0.5, 0.0])
-
-        self.reset_parameters(stdv=1e-2)
 
 
     def forward(self, x, y, edge_idx, hidden_in=None, edge_weights=None):
@@ -394,11 +411,6 @@ class GCRNN(nn.Module):
         return acc_loss, aux_loss, all_dec, all_hidden
 
 
-    def reset_parameters(self, stdv=1e-1):
-        for weight in self.parameters():
-            weight.data.normal_(0, stdv)
-
-
     def _exp_loss(self, pred, target, time, frames=100, fps=20.0):
         '''
         :param pred:
@@ -420,7 +432,6 @@ class GCRNN(nn.Module):
         return loss
 
 
-
 class BayesGCRNN(nn.Module):
     def __init__(self, x_dim, h_dim, z_dim, n_layers=1, n_obj=19):
         super(BayesGCRNN, self).__init__()
@@ -440,20 +451,22 @@ class BayesGCRNN(nn.Module):
         self.rnn = graph_gru_gcn(h_dim + h_dim + z_dim, h_dim, n_layers, bias=True)
         # BNN decoder
         self.predictor = BayesianPredictor(n_obj * z_dim, 2)
+        # auxiliary branch
+        self.predictor_aux = AccidentPredictor(h_dim + h_dim, 2, dropout=[0.5, 0.0])
+        self.soft_aggregation = SoftAggregate(self.n_frames)
         
         # loss function
         self.ce_loss = torch.nn.CrossEntropyLoss(reduction='none')
-        # # intialize parameters
-        # self.reset_parameters(stdv=1e-2)
 
 
-    def forward(self, x, y, graph, hidden_in=None, edge_weights=None, npass=2, nbatch=80, testing=False, loss_w=1.0):
+    def forward(self, x, y, graph, hidden_in=None, edge_weights=None, npass=2, nbatch=80, testing=False):
         """
         :param x, (batchsize, nFrames, nBoxes, Xdim) = (10 x 100 x 20 x 4096)
         """
         losses = {'cross_entropy': 0,
                   'log_posterior': 0,
                   'log_prior': 0,
+                  'auxloss': 0,
                   'total_loss': 0}
         all_dec, all_hidden = [], []
 
@@ -485,22 +498,20 @@ class BayesGCRNN(nn.Module):
             L1 = log_variational_posterior / nbatch
             L2 = log_prior / nbatch
             L3 = self._exp_loss(dec_t, y, t)
-            L = loss_w * (L1 - L2) + L3
-            losses['cross_entropy'] += L3
             losses['log_posterior'] += L1
             losses['log_prior'] += L2
-            losses['total_loss'] += L
+            losses['cross_entropy'] += L3
 
             all_dec.append(dec_t)
             all_hidden.append(h[-1])
 
+        # soft attention to aggregate hidden states of all frames
+        embed_video = self.soft_aggregation(torch.stack(all_hidden, dim=-1))
+        dec = self.predictor_aux(embed_video)
+        L4 = self.ce_loss(dec, y[:, 1].to(torch.long))
+        losses['auxloss'] = L4
+
         return losses, all_dec, all_hidden
-
-
-    def reset_parameters(self, stdv=1e-1):
-        for weight in self.parameters():
-            weight.data.normal_(0, stdv)
-
 
 
     def _exp_loss(self, pred, target, time, frames=100, fps=20.0):
@@ -522,29 +533,4 @@ class BayesGCRNN(nn.Module):
 
         loss = torch.mean(torch.add(torch.mul(pos_loss, target[:, 1]), torch.mul(neg_loss, target[:, 0])))
         return loss
-
-
-class SoftAggregate(torch.nn.Module):
-    def __init__(self, agg_dim):
-        super(SoftAggregate, self).__init__()
-        self.agg_dim = agg_dim
-        self.weight = nn.Parameter(torch.Tensor(agg_dim, 1))  # (100, 1)
-        self.softmax = nn.Softmax(dim=-1)
-
-    def forward(self, hiddens):
-        """
-        hiddens: (10, 19, 256, 100)
-        """
-        maxpool = torch.max(hiddens, dim=1)[0]  # (10, 256, 100)
-        avgpool = torch.mean(hiddens, dim=1)    # (10, 256, 100)
-        agg_spatial = torch.cat((avgpool, maxpool), dim=1)  # (10, 512, 100)
-
-        # soft-attention
-        energy = torch.bmm(agg_spatial.permute([0, 2, 1]), agg_spatial)  # (10, 100, 100)
-        attention = self.softmax(energy)
-        weighted_feat = torch.bmm(attention, agg_spatial.permute([0, 2, 1]))  # (10, 100, 512)
-        weight = self.weight.unsqueeze(0).repeat([hiddens.size(0), 1, 1])
-        agg_feature = torch.bmm(weighted_feat.permute([0, 2, 1]), weight)  # (10, 512, 1)
-
-        return agg_feature.squeeze(dim=-1)  # (10, 512)
 

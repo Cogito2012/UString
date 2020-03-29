@@ -1,13 +1,13 @@
 .idea
+.pytest_cache
 .vscode
 data/*
 *.pyc
 logs/
 *output*
 log*
-debug_exp.sh
 models_i3d/
-nohup.out
 backup
+dsarnn_tf
 runs
-__pycache__
+src/__pycache__

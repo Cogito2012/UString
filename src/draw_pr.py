@@ -2,7 +2,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 import os
 
-def evaluation(all_pred, all_labels, total_time = 90, length = None):
+def evaluation(all_pred, all_labels, total_time = 90, length = None, speedup=False):
     ### input: all_pred (N x total_time) , all_label (N,)
     ### where N = number of videos, fps = 20 , time of accident = total_time
     ### output: AP & Time to Accident
@@ -21,7 +21,11 @@ def evaluation(all_pred, all_labels, total_time = 90, length = None):
     Time = np.zeros((temp_shape))
     cnt = 0
     AP = 0.0
-    for Th in np.arange(np.min(all_pred), 1.0, 0.001):
+    if speedup:
+        threshs = np.arange(np.min(all_pred), 1.0, 0.001)
+    else:
+        threshs = sorted(all_pred.flatten())
+    for Th in threshs:
         if length is not None and Th <= 0:
                 continue
         Tp = 0.0
@@ -55,7 +59,7 @@ def evaluation(all_pred, all_labels, total_time = 90, length = None):
     Recall = Recall[new_index]
     Time = Time[new_index]
     _,rep_index = np.unique(Recall,return_index=1)
-    rep_index = rep_index[1:]
+    rep_index = rep_index[1:] if speedup else rep_index
     new_Time = np.zeros(len(rep_index))
     new_Precision = np.zeros(len(rep_index))
     for i in range(len(rep_index)-1):
@@ -69,17 +73,25 @@ def evaluation(all_pred, all_labels, total_time = 90, length = None):
     return new_Precision, new_Recall, new_Time
 
 if __name__ == "__main__":
-    result_dir = './output_dev/gcrnn/vgg16/dad/test'
-    # eval our own model
-    result_file = os.path.join(result_dir, "pred_res.npz")
+    result_dir = './output_dev/'
+    # eval our own model (GCN-RNN)
+    result_file = os.path.join(result_dir, "./gcrnn_auxloss/vgg16/dad/test/pred_res.npz")
     data = np.load(result_file)
     all_pred = data['pred']
     all_labels = data['label']
     total_time = data['total_time']
     precision, recall, tta = evaluation(all_pred, all_labels, total_time)
 
+    # eval our own model (Bayes GCN-RNN)
+    result_file = os.path.join(result_dir, "bayes_gcrnn/vgg16/dad/test/pred_res.npz")
+    data = np.load(result_file)
+    all_pred = data['pred']
+    all_labels = data['label']
+    total_time = data['total_time']
+    precision_bayes, recall_bayes, tta_bayes = evaluation(all_pred, all_labels, total_time)
+
     # eval DSARNN model
-    result_file = "./output_dev/dsa_rnn_tf/pred_res_dsarcnn.npz"
+    result_file = "./dsarnn_tf/eval/eval_dsarcnn_demo.npz"
     data = np.load(result_file)
     all_pred = data['pred']
     all_labels = data['label']
@@ -89,26 +101,28 @@ if __name__ == "__main__":
     # draw comparison curves
     plt.figure()
     plt.plot(recall_dsarnn, precision_dsarnn, 'b-')
+    plt.plot(recall_bayes, precision_bayes, 'k-')
     plt.plot(recall, precision, 'r-')
     plt.xlabel('Recall')
     plt.ylabel('Precision')
     plt.ylim([0.0, 1.0])
     plt.xlim([0.0, 1.0])
     plt.title('Precision Recall Curves')
-    plt.legend(['DSA-RNN', 'Ours'])
+    plt.legend(['DSA-RNN', 'Ours (Bayes GCN-RNN)', 'Ours (GCN RNN)'])
     plt.grid()
     plt.tight_layout()
     plt.savefig(os.path.join(result_dir, 'PRCurve.png'))
 
     plt.figure()
     plt.plot(recall_dsarnn, tta_dsarnn*5, 'b-')
+    plt.plot(recall_bayes, tta_bayes*5, 'k-')
     plt.plot(recall, tta*5, 'r-')
     plt.xlabel('Recall')
     plt.ylabel('Time to Accident')
     plt.ylim([0.0, 5])
     plt.xlim([0.0, 1.0])
-    plt.title('Recall Time-to-Accident Curves' )
-    plt.legend(['DSA-RNN', 'Ours'])
+    plt.title('Time-to-Accident Recall Curves' )
+    plt.legend(['DSA-RNN', 'Ours (Bayes GCN-RNN)', 'Ours (GCN RNN)'])
     plt.grid()
     plt.tight_layout()
     plt.savefig(os.path.join(result_dir, 'TRCurve.png'))
