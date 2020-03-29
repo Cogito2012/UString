@@ -328,8 +328,7 @@ def train_eval():
         model_file = os.path.join(model_dir, 'bayesian_gcrnn_model_%02d.pth'%(k))
         torch.save({'epoch': k,
                     'model': model.module.state_dict() if len(gpu_ids)>1 else model.state_dict(),
-                    'optimizer': optimizer.state_dict(),
-                    'logger': logger}, model_file)
+                    'optimizer': optimizer.state_dict()}, model_file)
         print('Model has been saved as: %s'%(model_file))
         
         # write histograms
