@@ -240,8 +240,6 @@ def train_eval():
             iter_cur += len(traindata_loader)
             continue
         model.train()
-        # adjust learning rate
-        scheduler.step()
         for i, (batch_xs, batch_ys, graph_edges, edge_weights) in enumerate(traindata_loader):
             # ipdb.set_trace()
             optimizer.zero_grad()
@@ -275,7 +273,9 @@ def train_eval():
                     'model': model.module.state_dict() if len(gpu_ids)>1 else model.state_dict(),
                     'optimizer': optimizer.state_dict()}, model_file)
         print('Model has been saved as: %s'%(model_file))
-        
+
+        # # adjust learning rate
+        # scheduler.step()
         # write histograms
         write_weight_histograms(logger, model, k+1)
     logger.close()
