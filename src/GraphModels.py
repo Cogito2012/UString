@@ -433,7 +433,7 @@ class GCRNN(nn.Module):
 
 
 class BayesGCRNN(nn.Module):
-    def __init__(self, x_dim, h_dim, z_dim, n_layers=1, n_obj=19):
+    def __init__(self, x_dim, h_dim, z_dim, n_layers=1, n_obj=19, n_frames=100):
         super(BayesGCRNN, self).__init__()
 
         self.x_dim = x_dim
@@ -441,6 +441,7 @@ class BayesGCRNN(nn.Module):
         self.z_dim = z_dim  # 256 (-->128)
         self.n_layers = n_layers
         self.n_obj = n_obj
+        self.n_frames = n_frames
 
         self.phi_x = nn.Sequential(nn.Linear(x_dim, h_dim), nn.ReLU())
 
