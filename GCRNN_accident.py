@@ -109,7 +109,7 @@ def test_all_vis(testdata_loader, model, time=90, vis=True, multiGPU=False, devi
     return all_pred, all_labels, vis_data
 
 
-def load_checkpoint(model, optimizer=None, filename='checkpoint.pth.tar', device=torch.device('cuda'), isTraining=True):
+def load_checkpoint(model, optimizer=None, filename='checkpoint.pth.tar', isTraining=True):
     # Note: Input model & optimizer should be pre-defined.  This routine only updates their states.
     start_epoch = 0
     if os.path.isfile(filename):
@@ -156,7 +156,7 @@ def train_eval():
 
     # optimizer
     optimizer = torch.optim.Adam(model.parameters(), lr=p.base_lr)
-    # scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='max', factor=0.5, patience=5)
+    scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='max', factor=0.5, patience=5)
 
     # resume training 
     start_epoch = 0
@@ -187,7 +187,6 @@ def train_eval():
         if k <= start_epoch:
             iter_cur += len(traindata_loader)
             continue
-        model.train()
         for i, (batch_xs, batch_ys, graph_edges, edge_weights) in enumerate(traindata_loader):
             # ipdb.set_trace()
             optimizer.zero_grad()
@@ -206,14 +205,15 @@ def train_eval():
             print('loss_aux = %.6f' % (aux_loss.mean().item()))
             info = {'loss': loss.mean().item(), 'loss_acc': acc_loss.mean().item(), 'loss_aux': aux_loss.mean().item()}
             logger.add_scalars("losses/train", info, iter_cur)
-            # lr = optimizer.param_groups[0]['lr']
-            # logger.add_scalar("others/learning_rate", lr, iter_cur)
+            lr = optimizer.param_groups[0]['lr']
+            logger.add_scalar("others/learning_rate", lr, iter_cur)
             
             iter_cur += 1
             # test and evaluate the model
             if iter_cur % p.test_iter == 0:
                 model.eval()
                 loss_val, loss_acc_val, loss_aux_val, AP, mTTA, TTA_R80 = test_all(testdata_loader, model, time=90)
+                model.train()
                 # keep track of validation losses
                 info_losses = {'loss_total': loss_val, 'loss_acc': loss_acc_val, 'loss_aux': loss_aux_val}
                 logger.add_scalars("losses/val_total", info_losses, iter_cur)
@@ -227,8 +227,9 @@ def train_eval():
                     'optimizer': optimizer.state_dict()}, model_file)
         print('Model has been saved as: %s'%(model_file))
 
-        # # adjust learning rate, using AP as monitor
-        # scheduler.step(AP)
+        # adjust learning rate, using indicator as monitor
+        indicator = 2 * AP * mTTA / (AP + mTTA)
+        scheduler.step(indicator)
     logger.close()
 
 
@@ -287,7 +288,7 @@ def test_eval():
             epoch_str = filename.split("_")[-1].split(".pth")[0]
             print("Evaluation for epoch: " + epoch_str)
             model_file = os.path.join(model_dir, filename)
-            model, _, _ = load_checkpoint(model, filename=model_file)
+            model, _, _ = load_checkpoint(model, filename=model_file, isTraining=False)
             # run model inference
             all_pred, all_labels, _ = test_all_vis(testdata_loader, model, time=90, vis=False, device=device)
             # evaluate results
@@ -298,7 +299,7 @@ def test_eval():
         # print results to file
         print_results(AP_all, mTTA_all, TTA_R80_all, result_dir)
     else:
-        model, _, _ = load_checkpoint(model, filename=p.model_file)
+        model, _, _ = load_checkpoint(model, filename=p.model_file, isTraining=False)
         # run model inference
         all_pred, all_labels, vis_data = test_all_vis(testdata_loader, model, time=90, vis=True, device=device)
         # save predictions

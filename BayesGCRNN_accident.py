@@ -206,7 +206,7 @@ def train_eval():
 
     # optimizer
     optimizer = torch.optim.Adam(model.parameters(), lr=p.base_lr)
-    # scheduler = torch.optim.lr_scheduler.StepLR(optimizer, 17, gamma=0.1, last_epoch=-1)
+    scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='max', factor=0.5, patience=5)
 
     # resume training 
     start_epoch = 0
@@ -239,7 +239,6 @@ def train_eval():
         if k <= start_epoch:
             iter_cur += len(traindata_loader)
             continue
-        model.train()
         for i, (batch_xs, batch_ys, graph_edges, edge_weights) in enumerate(traindata_loader):
             # ipdb.set_trace()
             optimizer.zero_grad()
@@ -252,12 +251,15 @@ def train_eval():
             optimizer.step()
             # write the losses info
             write_scalars(logger, k, iter_cur, losses)
+            lr = optimizer.param_groups[0]['lr']
+            logger.add_scalar("others/learning_rate", lr, iter_cur)
             
             iter_cur += 1
             # test and evaluate the model
             if iter_cur % p.test_iter == 0:
                 model.eval()
                 all_pred, all_labels, losses_all = test_all(testdata_loader, model, time=90)
+                model.train()
                 loss_val = average_losses(losses_all)
                 print('----------------------------------')
                 print("Starting evaluation...")
@@ -274,8 +276,9 @@ def train_eval():
                     'optimizer': optimizer.state_dict()}, model_file)
         print('Model has been saved as: %s'%(model_file))
 
-        # # adjust learning rate
-        # scheduler.step()
+        # adjust learning rate
+        indicator = 2 * AP * mTTA / (AP + mTTA)
+        scheduler.step(indicator)
         # write histograms
         write_weight_histograms(logger, model, k+1)
     logger.close()
@@ -335,7 +338,7 @@ def test_eval():
             epoch_str = filename.split("_")[-1].split(".pth")[0]
             print("Evaluation for epoch: " + epoch_str)
             model_file = os.path.join(model_dir, filename)
-            model, _, _ = load_checkpoint(model, filename=model_file)
+            model, _, _ = load_checkpoint(model, filename=model_file, isTraining=False)
             # run model inference
             all_pred, all_labels, _ = test_all_vis(testdata_loader, model, time=90, vis=False, device=device)
             # evaluate results
@@ -346,7 +349,7 @@ def test_eval():
         # print results to file
         print_results(AP_all, mTTA_all, TTA_R80_all, result_dir)
     else:
-        model, _, _ = load_checkpoint(model, filename=p.model_file)
+        model, _, _ = load_checkpoint(model, filename=p.model_file, isTraining=False)
         # run model inference
         all_pred, all_labels, vis_data = test_all_vis(testdata_loader, model, time=90, vis=True, device=device)
         # save predictions
