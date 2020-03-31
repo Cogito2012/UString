@@ -209,7 +209,7 @@ def train_eval():
     scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='max', factor=0.5, patience=5)
 
     # resume training 
-    start_epoch = 0
+    start_epoch = -1
     if p.resume:
         model, optimizer, start_epoch = load_checkpoint(model, optimizer=optimizer, filename=p.model_file)
 
@@ -276,9 +276,10 @@ def train_eval():
                     'optimizer': optimizer.state_dict()}, model_file)
         print('Model has been saved as: %s'%(model_file))
 
-        # adjust learning rate
-        indicator = 2 * AP * mTTA / (AP + mTTA)
-        scheduler.step(indicator)
+        if k >= p.epoch / 4:
+            # adjust learning rate
+            indicator = 2 * metrics['AP'] * metrics['mTTA'] / (metrics['AP'] + metrics['mTTA'])
+            scheduler.step(indicator)
         # write histograms
         write_weight_histograms(logger, model, k+1)
     logger.close()
