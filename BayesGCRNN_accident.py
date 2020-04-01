@@ -136,7 +136,7 @@ def write_scalars(logger, cur_epoch, cur_iter, losses, lr):
     logger.add_scalars("train/losses/complexity_cost", {'complexity_cost': log_posterior-log_prior}, cur_iter)
     logger.add_scalars("train/losses/aux_loss", {'aux_loss': aux_loss}, cur_iter)
     # write learning rate
-    logger.add_scalars("train/learning_rate/lr", {'lr': lr}, iter_cur)
+    logger.add_scalars("train/learning_rate/lr", {'lr': lr}, cur_iter)
 
 
 def write_test_scalars(logger, cur_epoch, cur_iter, losses, metrics):
