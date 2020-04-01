@@ -91,7 +91,8 @@ if __name__ == "__main__":
     precision_bayes, recall_bayes, tta_bayes = evaluation(all_pred, all_labels, total_time)
 
     # eval DSARNN model
-    result_file = "./dsarnn_tf/eval/eval_dsarcnn_demo.npz"
+    # result_file = "./dsarnn_tf/eval/eval_dsarcnn_demo.npz"
+    result_file = "./dsarnn_tf/eval/eval_dsarcnn_retrain.npz"
     data = np.load(result_file)
     all_pred = data['pred']
     all_labels = data['label']
@@ -101,28 +102,28 @@ if __name__ == "__main__":
     # draw comparison curves
     plt.figure()
     plt.plot(recall_dsarnn, precision_dsarnn, 'b-')
-    plt.plot(recall_bayes, precision_bayes, 'k-')
-    plt.plot(recall, precision, 'r-')
+    plt.plot(recall, precision, 'k-')
+    plt.plot(recall_bayes, precision_bayes, 'r-')
     plt.xlabel('Recall')
     plt.ylabel('Precision')
     plt.ylim([0.0, 1.0])
     plt.xlim([0.0, 1.0])
     plt.title('Precision Recall Curves')
-    plt.legend(['DSA-RNN', 'Ours (Bayes GCN-RNN)', 'Ours (GCN RNN)'])
+    plt.legend(['DSA-RNN', 'Ours (GCN RNN)', 'Ours (Bayes GCN-RNN)'])
     plt.grid()
     plt.tight_layout()
     plt.savefig(os.path.join(result_dir, 'PRCurve.png'))
 
     plt.figure()
     plt.plot(recall_dsarnn, tta_dsarnn*5, 'b-')
-    plt.plot(recall_bayes, tta_bayes*5, 'k-')
-    plt.plot(recall, tta*5, 'r-')
+    plt.plot(recall, tta*5, 'k-')
+    plt.plot(recall_bayes, tta_bayes*5, 'r-')
     plt.xlabel('Recall')
     plt.ylabel('Time to Accident')
     plt.ylim([0.0, 5])
     plt.xlim([0.0, 1.0])
     plt.title('Time-to-Accident Recall Curves' )
-    plt.legend(['DSA-RNN', 'Ours (Bayes GCN-RNN)', 'Ours (GCN RNN)'])
+    plt.legend(['DSA-RNN', 'Ours (GCN RNN)', 'Ours (Bayes GCN-RNN)'])
     plt.grid()
     plt.tight_layout()
     plt.savefig(os.path.join(result_dir, 'TRCurve.png'))

@@ -113,7 +113,7 @@ def test_all_vis(testdata_loader, model, time=90, vis=True, multiGPU=False, devi
 
 
 
-def write_scalars(logger, cur_epoch, cur_iter, losses):
+def write_scalars(logger, cur_epoch, cur_iter, losses, lr):
     # fetch results
     total_loss = losses['total_loss'].mean().item()
     cross_entropy = losses['cross_entropy'].mean()
@@ -133,7 +133,10 @@ def write_scalars(logger, cur_epoch, cur_iter, losses):
     logger.add_scalars("train/losses/cross_entropy", {'cross_entropy': cross_entropy}, cur_iter)
     logger.add_scalars("train/losses/log_posterior", {'log_posterior': log_posterior}, cur_iter)
     logger.add_scalars("train/losses/log_prior", {'log_prior': log_prior}, cur_iter)
+    logger.add_scalars("train/losses/complexity_cost", {'complexity_cost': log_posterior-log_prior}, cur_iter)
     logger.add_scalars("train/losses/aux_loss", {'aux_loss': aux_loss}, cur_iter)
+    # write learning rate
+    logger.add_scalars("train/learning_rate/lr", {'lr': lr}, iter_cur)
 
 
 def write_test_scalars(logger, cur_epoch, cur_iter, losses, metrics):
@@ -206,7 +209,7 @@ def train_eval():
 
     # optimizer
     optimizer = torch.optim.Adam(model.parameters(), lr=p.base_lr)
-    scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='max', factor=0.5, patience=5)
+    scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', factor=0.5, patience=5)
 
     # resume training 
     start_epoch = -1
@@ -243,16 +246,16 @@ def train_eval():
             # ipdb.set_trace()
             optimizer.zero_grad()
             losses, predictions, hidden_st = model(batch_xs, batch_ys, graph_edges, edge_weights=edge_weights, npass=2, nbatch=len(traindata_loader))
-            losses['total_loss'] = p.loss_alpha * (losses['log_posterior'] - losses['log_prior']) + losses['cross_entropy'] + p.loss_beta * losses['auxloss']
+            complexity_loss = losses['log_posterior'] - losses['log_prior']
+            losses['total_loss'] = p.loss_alpha * complexity_loss + losses['cross_entropy'] + p.loss_beta * losses['auxloss']
             # backward
             losses['total_loss'].mean().backward()
             # clip gradients
             torch.nn.utils.clip_grad_norm_(model.parameters(), 10)
             optimizer.step()
             # write the losses info
-            write_scalars(logger, k, iter_cur, losses)
             lr = optimizer.param_groups[0]['lr']
-            logger.add_scalar("others/learning_rate", lr, iter_cur)
+            write_scalars(logger, k, iter_cur, losses, lr)
             
             iter_cur += 1
             # test and evaluate the model
@@ -276,10 +279,11 @@ def train_eval():
                     'optimizer': optimizer.state_dict()}, model_file)
         print('Model has been saved as: %s'%(model_file))
 
-        if k >= p.epoch / 4:
-            # adjust learning rate
-            indicator = 2 * metrics['AP'] * metrics['mTTA'] / (metrics['AP'] + metrics['mTTA'])
-            scheduler.step(indicator)
+        # if k >= p.epoch / 4:
+        #     # adjust learning rate
+        #     indicator = 2 * metrics['AP'] * metrics['mTTA'] / (metrics['AP'] + metrics['mTTA'])
+        #     scheduler.step(indicator)
+        scheduler.step(complexity_loss)
         # write histograms
         write_weight_histograms(logger, model, k+1)
     logger.close()
