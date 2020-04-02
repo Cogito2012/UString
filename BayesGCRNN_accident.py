@@ -279,11 +279,7 @@ def train_eval():
                     'optimizer': optimizer.state_dict()}, model_file)
         print('Model has been saved as: %s'%(model_file))
 
-        # if k >= p.epoch / 4:
-        #     # adjust learning rate
-        #     indicator = 2 * metrics['AP'] * metrics['mTTA'] / (metrics['AP'] + metrics['mTTA'])
-        #     scheduler.step(indicator)
-        scheduler.step(complexity_loss)
+        scheduler.step(losses['log_posterior'])
         # write histograms
         write_weight_histograms(logger, model, k+1)
     logger.close()

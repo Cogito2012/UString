@@ -75,7 +75,7 @@ def evaluation(all_pred, all_labels, total_time = 90, length = None, speedup=Fal
 if __name__ == "__main__":
     result_dir = './output_dev/'
     # eval our own model (GCN-RNN)
-    result_file = os.path.join(result_dir, "./gcrnn_auxloss/vgg16/dad/test/pred_res.npz")
+    result_file = os.path.join(result_dir, "../backup/gcrnn_auxloss_0331/vgg16/dad/test/pred_res.npz")
     data = np.load(result_file)
     all_pred = data['pred']
     all_labels = data['label']

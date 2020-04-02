@@ -24,7 +24,7 @@ case ${PHASE} in
       --dataset dad \
       --feature_name vgg16 \
       --phase train \
-      --base_lr 0.0005 \
+      --base_lr 0.001 \
       --batch_size 10 \
       --epoch $EPOCH \
       --test_iter 64 \
