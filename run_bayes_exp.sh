@@ -28,12 +28,14 @@ case ${PHASE} in
       --batch_size 10 \
       --epoch $EPOCH \
       --test_iter 64 \
+      --uncertainty_ranking \
       --loss_alpha 0.001 \
       --loss_beta 10 \
+      --loss_yita 10 \
       --hidden_dim 256 \
       --latent_dim 256 \
       --gpus $GPUS \
-      --output_dir ./output_dev/bayes_gcrnn/vgg16
+      --output_dir ./output_dev/bayes_gcrnn_ranking/vgg16
     ;;
   test)
     CUDA_VISIBLE_DEVICES=$GPUS python BayesGCRNN_accident.py \
@@ -45,8 +47,8 @@ case ${PHASE} in
       --latent_dim 256 \
       --gpus $GPUS \
       --visualize \
-      --output_dir ./output_dev/bayes_gcrnn/vgg16 \
-      --model_file ./output_dev/bayes_gcrnn/vgg16/dad/snapshot/bayesian_gcrnn_model_${EPOCH}.pth
+      --output_dir ./output_dev/bayes_gcrnn_ranking/vgg16 \
+      --model_file ./output_dev/bayes_gcrnn_ranking/vgg16/dad/snapshot/bayesian_gcrnn_model_${EPOCH}.pth
     ;;
   *)
     echo "Invalid argument!"

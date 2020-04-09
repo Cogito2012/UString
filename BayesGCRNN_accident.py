@@ -24,7 +24,7 @@ ROOT_PATH = os.path.dirname(__file__)
 
 
 def average_losses(losses_all):
-    total_loss, cross_entropy, log_posterior, log_prior, aux_loss = 0, 0, 0, 0, 0
+    total_loss, cross_entropy, log_posterior, log_prior, aux_loss, rank_loss = 0, 0, 0, 0, 0, 0
     losses_mean = {}
     for losses in losses_all:
         total_loss += losses['total_loss']
@@ -32,11 +32,15 @@ def average_losses(losses_all):
         log_posterior += losses['log_posterior']
         log_prior += losses['log_prior']
         aux_loss += losses['auxloss']
+        if p.uncertainty_ranking:
+            rank_loss += losses['ranking']
     losses_mean['total_loss'] = total_loss / len(losses_all)
     losses_mean['cross_entropy'] = cross_entropy / len(losses_all)
     losses_mean['log_posterior'] = log_posterior / len(losses_all)
     losses_mean['log_prior'] = log_prior / len(losses_all)
     losses_mean['auxloss'] = aux_loss / len(losses_all)
+    if p.uncertainty_ranking:
+        losses_mean['ranking'] = rank_loss / len(losses_all)
     return losses_mean
 
 
@@ -51,6 +55,8 @@ def test_all(testdata_loader, model, time=90):
             losses, all_outputs, hiddens = model(batch_xs, batch_ys, graph_edges, 
                     hidden_in=None, edge_weights=edge_weights, npass=10, nbatch=len(testdata_loader), testing=False)
             losses['total_loss'] = p.loss_alpha * (losses['log_posterior'] - losses['log_prior']) + losses['cross_entropy'] + p.loss_beta * losses['auxloss']
+            if p.uncertainty_ranking:
+                losses['total_loss'] += p.loss_yita * losses['ranking']
             losses_all.append(losses)
 
             num_frames = batch_xs.size()[1]
@@ -135,6 +141,8 @@ def write_scalars(logger, cur_epoch, cur_iter, losses, lr):
     log_prior = losses['log_prior'].mean().item()
     log_posterior = losses['log_posterior'].mean().item()
     aux_loss = losses['auxloss'].mean().item()
+    if p.uncertainty_ranking:
+        rank_loss = losses['ranking'].mean().item()
     # print info
     print('----------------------------------')
     print('epoch: %d, iter: %d' % (cur_epoch, cur_iter))
@@ -143,6 +151,8 @@ def write_scalars(logger, cur_epoch, cur_iter, losses, lr):
     print('log_posterior = %.6f' % (log_posterior))
     print('log_prior = %.6f' % (log_prior))
     print('aux_loss = %.6f' % (aux_loss))
+    if p.uncertainty_ranking:
+        print('rank_loss = %.6f' % (rank_loss))
     # write to tensorboard
     logger.add_scalars("train/losses/total_loss", {'total_loss': total_loss}, cur_iter)
     logger.add_scalars("train/losses/cross_entropy", {'cross_entropy': cross_entropy}, cur_iter)
@@ -150,6 +160,8 @@ def write_scalars(logger, cur_epoch, cur_iter, losses, lr):
     logger.add_scalars("train/losses/log_prior", {'log_prior': log_prior}, cur_iter)
     logger.add_scalars("train/losses/complexity_cost", {'complexity_cost': log_posterior-log_prior}, cur_iter)
     logger.add_scalars("train/losses/aux_loss", {'aux_loss': aux_loss}, cur_iter)
+    if p.uncertainty_ranking:
+        logger.add_scalars("train/losses/rank_loss", {'rank_loss': rank_loss}, cur_iter)
     # write learning rate
     logger.add_scalars("train/learning_rate/lr", {'lr': lr}, cur_iter)
 
@@ -160,7 +172,8 @@ def write_test_scalars(logger, cur_epoch, cur_iter, losses, metrics):
     cross_entropy = losses['cross_entropy'].mean()
     aux_loss = losses['auxloss'].mean().item()
     # write to tensorboard
-    logger.add_scalars("test/losses/total_loss", {'total_loss': total_loss, 'cross_entropy': cross_entropy, 'aux_loss': aux_loss}, cur_iter)
+    loss_info = {'total_loss': total_loss, 'cross_entropy': cross_entropy, 'aux_loss': aux_loss}
+    logger.add_scalars("test/losses/total_loss", loss_info, cur_iter)
     logger.add_scalars("test/accuracy/AP", {'AP': metrics['AP']}, cur_iter)
     logger.add_scalars("test/accuracy/time-to-accident", {'mTTA': metrics['mTTA'], 
                                                           'TTA_R80': metrics['TTA_R80']}, cur_iter)
@@ -219,7 +232,7 @@ def train_eval():
     device = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
 
     # building model
-    model = BayesGCRNN(feature_dim, p.hidden_dim, p.latent_dim, p.num_rnn)
+    model = BayesGCRNN(feature_dim, p.hidden_dim, p.latent_dim, p.num_rnn, uncertain_ranking=p.uncertainty_ranking)
 
     # optimizer
     optimizer = torch.optim.Adam(model.parameters(), lr=p.base_lr)
@@ -259,9 +272,11 @@ def train_eval():
         for i, (batch_xs, batch_ys, graph_edges, edge_weights) in enumerate(traindata_loader):
             # ipdb.set_trace()
             optimizer.zero_grad()
-            losses, all_outputs, hidden_st = model(batch_xs, batch_ys, graph_edges, edge_weights=edge_weights, npass=2, nbatch=len(traindata_loader))
+            losses, all_outputs, hidden_st = model(batch_xs, batch_ys, graph_edges, edge_weights=edge_weights, npass=2, nbatch=len(traindata_loader), eval_uncertain=True)
             complexity_loss = losses['log_posterior'] - losses['log_prior']
             losses['total_loss'] = p.loss_alpha * complexity_loss + losses['cross_entropy'] + p.loss_beta * losses['auxloss']
+            if p.uncertainty_ranking:
+                losses['total_loss'] += p.loss_yita * losses['ranking']
             # backward
             losses['total_loss'].mean().backward()
             # clip gradients
@@ -407,10 +422,14 @@ if __name__ == '__main__':
                         help='The dimension of hidden states in RNN. Default: 128')
     parser.add_argument('--latent_dim', type=int, default=64,
                         help='The dimension of latent space. Default: 64')
+    parser.add_argument('--uncertainty_ranking', action='store_true',
+                        help='Use uncertainty ranking loss')
     parser.add_argument('--loss_alpha', type=float, default=0.001,
                         help='The weighting factor of posterior and prior losses. Default: 1e-3')
     parser.add_argument('--loss_beta', type=float, default=10,
                         help='The weighting factor of auxiliary loss. Default: 10')
+    parser.add_argument('--loss_yita', type=float, default=10,
+                        help='The weighting factor of uncertainty ranking loss. Default: 10')
     parser.add_argument('--gpus', type=str, default="0", 
                         help="The delimited list of GPU IDs separated with comma. Default: '0'.")
     parser.add_argument('--phase', type=str, choices=['train', 'test'],

@@ -451,7 +451,7 @@ class GCRNN(nn.Module):
 
 
 class BayesGCRNN(nn.Module):
-    def __init__(self, x_dim, h_dim, z_dim, n_layers=1, n_obj=19, n_frames=100):
+    def __init__(self, x_dim, h_dim, z_dim, n_layers=1, n_obj=19, n_frames=100, uncertain_ranking=False):
         super(BayesGCRNN, self).__init__()
 
         self.x_dim = x_dim
@@ -460,6 +460,7 @@ class BayesGCRNN(nn.Module):
         self.n_layers = n_layers
         self.n_obj = n_obj
         self.n_frames = n_frames
+        self.uncertain_ranking = uncertain_ranking
 
         self.phi_x = nn.Sequential(nn.Linear(x_dim, h_dim), nn.ReLU())
 
@@ -487,6 +488,9 @@ class BayesGCRNN(nn.Module):
                   'log_prior': 0,
                   'auxloss': 0,
                   'total_loss': 0}
+        if self.uncertain_ranking:
+            losses.update({'ranking': 0})
+            Ut = torch.zeros(x.size(0)).to(x.device)  # B
         all_outputs, all_hidden = [], []
 
         # import ipdb; ipdb.set_trace()
@@ -521,6 +525,10 @@ class BayesGCRNN(nn.Module):
             losses['log_posterior'] += L1
             losses['log_prior'] += L2
             losses['cross_entropy'] += L3
+            # uncertainty ranking loss
+            if self.uncertain_ranking:
+                L5, Ut = self._uncertainty_ranking(output_dict, Ut)
+                losses['ranking'] += L5
 
             all_outputs.append(output_dict)
             all_hidden.append(h[-1])
@@ -554,3 +562,13 @@ class BayesGCRNN(nn.Module):
         loss = torch.mean(torch.add(torch.mul(pos_loss, target[:, 1]), torch.mul(neg_loss, target[:, 0])))
         return loss
 
+    def _uncertainty_ranking(self, output_dict, Ut):
+        """
+        :param label: 10 x 2
+        :param output_dict: 
+        """
+        aleatoric = output_dict['aleatoric']  # B x 2 x 2        
+        epistemic = output_dict['epistemic']  # B x 2 x 2
+        uncertainty = aleatoric[:, 1, 1] + epistemic[:, 1, 1]  # B
+        loss = torch.mean(torch.max(torch.zeros_like(Ut).to(Ut.device), uncertainty - Ut))
+        return loss, uncertainty
