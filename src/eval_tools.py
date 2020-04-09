@@ -100,17 +100,26 @@ def vis_results(vis_data, batch_size, vis_dir):
         toa = results['toa']
         video_ids = results['video_ids']
         detections = results['detections']
+        uncertainties = results['pred_uncertain']
         for n in range(batch_size):
             if labels[n] == 1:
+                pred_mean = pred_frames[n, :]  # (90,)
+                pred_std_alea = 1.0 * np.sqrt(uncertainties[n, :, 0])
+                pred_std_epis = 1.0 * np.sqrt(uncertainties[n, :, 1])
                 # plot the probability predictions
-                plt.figure(figsize=(14, 5))
-                plt.plot(pred_frames[n, :], linewidth=3.0)
+                fig, ax = plt.subplots(1, figsize=(14, 5))
+                ax.fill_between(range(1, len(pred_mean)+1), pred_mean - pred_std_alea, pred_mean + pred_std_alea, facecolor='wheat', alpha=0.5)
+                ax.fill_between(range(1, len(pred_mean)+1), pred_mean - pred_std_epis, pred_mean + pred_std_epis, facecolor='yellow', alpha=0.5)
+                plt.plot(range(1, len(pred_mean)+1), pred_mean, linewidth=3.0)
+                plt.axvline(x=toa[n], ymax=1.0, linewidth=3.0, color='r', linestyle='--')
+                fontsize = 18
                 plt.ylim(0, 1)
-                plt.ylabel('Probability')
-                plt.xlim(0, 100)
-                plt.xlabel('Frame (FPS=20)')
+                plt.xlim(1, 100)
+                plt.ylabel('Probability', fontsize=fontsize)
+                plt.xlabel('Frame (FPS=20)', fontsize=fontsize)
+                plt.xticks(fontsize=fontsize)
+                plt.yticks(fontsize=fontsize)
                 plt.grid(True)
                 plt.tight_layout()
-                plt.axvline(x=toa[n], ymax=1.0, linewidth=3.0, color='r', linestyle='--')
                 plt.savefig(os.path.join(vis_dir, video_ids[n] + '.png'))
                 plt.close()

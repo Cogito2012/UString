@@ -322,7 +322,7 @@ class BayesianPredictor(nn.Module):
     def log_variational_posterior(self):
         return self.l1.log_variational_posterior + self.l2.log_variational_posterior
 
-    def sample_elbo(self, input, out_dim=2, npass=2, testing=False):
+    def sample_elbo(self, input, out_dim=2, npass=2, testing=False, eval_uncertain=False):
         npass = npass + 1 if testing else npass
         outputs = torch.zeros(npass, input.size(0), out_dim).to(input.device)
         log_priors = torch.zeros(npass).to(input.device)
@@ -336,8 +336,26 @@ class BayesianPredictor(nn.Module):
         output = outputs.mean(0)
         log_prior = log_priors.mean()
         log_variational_posterior = log_variational_posteriors.mean()
-
-        return output, log_prior, log_variational_posterior
+        # predict the aleatoric and epistemic uncertainties
+        uncertain_alea = torch.zeros(input.size(0), out_dim, out_dim).to(input.device)
+        uncertain_epis = torch.zeros(input.size(0), out_dim, out_dim).to(input.device)
+        if eval_uncertain:
+            p = F.softmax(outputs, dim=-1) # N x B x C
+            # compute aleatoric uncertainty
+            p_diag = torch.diag_embed(p, offset=0, dim1=-2, dim2=-1) # N x B x C x C
+            p_cov = torch.matmul(p.unsqueeze(-1), p.unsqueeze(-1).permute(0, 1, 3, 2))  # N x B x C x C
+            uncertain_alea = torch.mean(p_diag - p_cov, dim=0)  # B x C x C
+            # compute epistemic uncertainty 
+            p_bar= torch.mean(p, dim=0)  # B x C
+            p_diff_var = torch.matmul((p-p_bar).unsqueeze(-1), (p-p_bar).unsqueeze(-1).permute(0, 1, 3, 2))  # N x B x C x C
+            uncertain_epis = torch.mean(p_diff_var, dim=0)  # B x C x C
+        
+        output_dict = {'pred_mean': output,
+                       'log_prior': log_prior,
+                       'log_posterior': log_variational_posterior,
+                       'aleatoric': uncertain_alea,
+                       'epistemic': uncertain_epis}
+        return output_dict
 
 
 # GCRNN model
@@ -460,7 +478,7 @@ class BayesGCRNN(nn.Module):
         self.ce_loss = torch.nn.CrossEntropyLoss(reduction='none')
 
 
-    def forward(self, x, y, graph, hidden_in=None, edge_weights=None, npass=2, nbatch=80, testing=False):
+    def forward(self, x, y, graph, hidden_in=None, edge_weights=None, npass=2, nbatch=80, testing=False, eval_uncertain=False):
         """
         :param x, (batchsize, nFrames, nBoxes, Xdim) = (10 x 100 x 20 x 4096)
         """
@@ -469,7 +487,7 @@ class BayesGCRNN(nn.Module):
                   'log_prior': 0,
                   'auxloss': 0,
                   'total_loss': 0}
-        all_dec, all_hidden = [], []
+        all_outputs, all_hidden = [], []
 
         # import ipdb; ipdb.set_trace()
         if hidden_in is None:
@@ -490,20 +508,21 @@ class BayesGCRNN(nn.Module):
 
             # BNN decoder
             embed = z_t.view(z_t.size(0), -1)  # 10 x (19 x 128)
-            dec_t, log_prior, log_variational_posterior = self.predictor.sample_elbo(embed, npass=npass, testing=testing)  # B x 2
+            output_dict = self.predictor.sample_elbo(embed, npass=npass, testing=testing, eval_uncertain=eval_uncertain)  # B x 2
+            dec_t = output_dict['pred_mean']
 
             # recurrence
             h = self.rnn(torch.cat([x_t, z_t], -1), graph[:, t], h, edge_weight=edge_weights[:, t])  # rnn latent (640)-->256
 
             # computing losses
-            L1 = log_variational_posterior / nbatch
-            L2 = log_prior / nbatch
+            L1 = output_dict['log_posterior'] / nbatch
+            L2 = output_dict['log_prior'] / nbatch
             L3 = self._exp_loss(dec_t, y, t)
             losses['log_posterior'] += L1
             losses['log_prior'] += L2
             losses['cross_entropy'] += L3
 
-            all_dec.append(dec_t)
+            all_outputs.append(output_dict)
             all_hidden.append(h[-1])
 
         # soft attention to aggregate hidden states of all frames
@@ -512,7 +531,7 @@ class BayesGCRNN(nn.Module):
         L4 = self.ce_loss(dec, y[:, 1].to(torch.long))
         losses['auxloss'] = L4
 
-        return losses, all_dec, all_hidden
+        return losses, all_outputs, all_hidden
 
 
     def _exp_loss(self, pred, target, time, frames=100, fps=20.0):
