@@ -28,7 +28,7 @@ def munge(src_dir):
             os.makedirs(dst_dir)
         src = os.path.join(src_dir, fn)
         dst = os.path.join(dst_dir, fn)
-        print 'MV: {} -> {}'.format(src, dst)
+        print('MV: {} -> {}'.format(src, dst))
         os.rename(src, dst)
 
 if __name__ == '__main__':
