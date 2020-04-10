@@ -3,7 +3,7 @@ import cv2
 import numpy as np
 import torch
 import sys
-sys.path.insert(0, './lib/RoIAlign')
+sys.path.insert(0, '../lib/RoIAlign')
 from roi_align import RoIAlign      # RoIAlign module
 from torch.autograd import Variable
 from src.ResNetI3D import i3_res50_nl
@@ -100,10 +100,11 @@ def run(data_path, video_path, dest_path):
     print('Testing samples: %d' % (len(test_list)))
 
 if __name__ == '__main__':
+    # input paths
     DAD_PATH = '/data/DAD/features'
     VIDEO_PATH = '/data/DAD/videos'
+    # output paths
     DEST_PATH = '/data/DAD/features_i3d'
-    MODEL_FILE = 'models_i3d/i3d_r50_nl_kinetics.pth'
     N_FRAMES = 100
     N_BOXES = 19
     STRIDE = 16
