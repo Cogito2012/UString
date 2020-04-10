@@ -189,6 +189,7 @@ def extract_features(data_path, video_path, dest_path, phase):
             np.savez_compressed(feat_file, data=features_res101, det=detections[i], labels=labels[i], ID=vidname)
             files_list.append(vidname)
         batch_id += 1
+    return files_list
 
 
 def run(data_path, video_path, dest_path):
