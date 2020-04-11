@@ -276,9 +276,9 @@ class AccidentPredictor(nn.Module):
         return x
 
 
-class SoftAggregate(torch.nn.Module):
+class SelfAttAggregate(torch.nn.Module):
     def __init__(self, agg_dim):
-        super(SoftAggregate, self).__init__()
+        super(SelfAttAggregate, self).__init__()
         self.agg_dim = agg_dim
         self.weight = nn.Parameter(torch.Tensor(agg_dim, 1))  # (100, 1)
         self.softmax = nn.Softmax(dim=-1)
@@ -380,7 +380,7 @@ class GCRNN(nn.Module):
         self.predictor = AccidentPredictor(n_obj * z_dim, 2, dropout=[0.5, 0.1])
         self.ce_loss = torch.nn.CrossEntropyLoss(reduction='none')
 
-        self.soft_aggregation = SoftAggregate(self.n_frames)
+        self.self_aggregation = SelfAttAggregate(self.n_frames)
         self.predictor_aux = AccidentPredictor(h_dim + h_dim, 2, dropout=[0.5, 0.0])
 
 
@@ -422,7 +422,7 @@ class GCRNN(nn.Module):
             all_hidden.append(h[-1])
 
         # soft attention to aggregate hidden states of all frames
-        embed_video = self.soft_aggregation(torch.stack(all_hidden, dim=-1))
+        embed_video = self.self_aggregation(torch.stack(all_hidden, dim=-1))
         dec = self.predictor_aux(embed_video)
         aux_loss = self.ce_loss(dec, y[:, 1].to(torch.long))
 
@@ -451,7 +451,7 @@ class GCRNN(nn.Module):
 
 
 class BayesGCRNN(nn.Module):
-    def __init__(self, x_dim, h_dim, z_dim, n_layers=1, n_obj=19, n_frames=100, uncertain_ranking=False):
+    def __init__(self, x_dim, h_dim, z_dim, n_layers=1, n_obj=19, n_frames=100, with_saa=True, uncertain_ranking=False):
         super(BayesGCRNN, self).__init__()
 
         self.x_dim = x_dim
@@ -461,6 +461,7 @@ class BayesGCRNN(nn.Module):
         self.n_obj = n_obj
         self.n_frames = n_frames
         self.uncertain_ranking = uncertain_ranking
+        self.with_saa = saa
 
         self.phi_x = nn.Sequential(nn.Linear(x_dim, h_dim), nn.ReLU())
 
@@ -471,9 +472,10 @@ class BayesGCRNN(nn.Module):
         self.rnn = graph_gru_gcn(h_dim + h_dim + z_dim, h_dim, n_layers, bias=True)
         # BNN decoder
         self.predictor = BayesianPredictor(n_obj * z_dim, 2)
-        # auxiliary branch
-        self.predictor_aux = AccidentPredictor(h_dim + h_dim, 2, dropout=[0.5, 0.0])
-        self.soft_aggregation = SoftAggregate(self.n_frames)
+        if self.with_saa:
+            # auxiliary branch
+            self.predictor_aux = AccidentPredictor(h_dim + h_dim, 2, dropout=[0.5, 0.0])
+            self.self_aggregation = SelfAttAggregate(self.n_frames)
         
         # loss function
         self.ce_loss = torch.nn.CrossEntropyLoss(reduction='none')
@@ -486,8 +488,9 @@ class BayesGCRNN(nn.Module):
         losses = {'cross_entropy': 0,
                   'log_posterior': 0,
                   'log_prior': 0,
-                  'auxloss': 0,
                   'total_loss': 0}
+        if self.with_saa:
+            losses.update({'auxloss': 0})
         if self.uncertain_ranking:
             losses.update({'ranking': 0})
             Ut = torch.zeros(x.size(0)).to(x.device)  # B
@@ -533,11 +536,12 @@ class BayesGCRNN(nn.Module):
             all_outputs.append(output_dict)
             all_hidden.append(h[-1])
 
-        # soft attention to aggregate hidden states of all frames
-        embed_video = self.soft_aggregation(torch.stack(all_hidden, dim=-1))
-        dec = self.predictor_aux(embed_video)
-        L4 = self.ce_loss(dec, y[:, 1].to(torch.long))
-        losses['auxloss'] = L4
+        if self.with_saa:
+            # soft attention to aggregate hidden states of all frames
+            embed_video = self.self_aggregation(torch.stack(all_hidden, dim=-1))
+            dec = self.predictor_aux(embed_video)
+            L4 = self.ce_loss(dec, y[:, 1].to(torch.long))
+            losses['auxloss'] = L4
 
         return losses, all_outputs, all_hidden
 
