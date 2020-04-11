@@ -461,7 +461,7 @@ class BayesGCRNN(nn.Module):
         self.n_obj = n_obj
         self.n_frames = n_frames
         self.uncertain_ranking = uncertain_ranking
-        self.with_saa = saa
+        self.with_saa = with_saa
 
         self.phi_x = nn.Sequential(nn.Linear(x_dim, h_dim), nn.ReLU())
 

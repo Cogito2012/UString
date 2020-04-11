@@ -1,9 +1,0 @@
-pytorch
-torchvision
-scikit-learn
-matplotlib
-networkx
-torch_scatter==1.4.0
-torch_geometric
-torch_sparse
-torch_cluster
