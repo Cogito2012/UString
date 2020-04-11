@@ -424,20 +424,20 @@ if __name__ == '__main__':
                         help='The name of dataset. Default: dad')
     parser.add_argument('--base_lr', type=float, default=1e-3,
                         help='The base learning rate. Default: 1e-3')
-    parser.add_argument('--epoch', type=int, default=200,
+    parser.add_argument('--epoch', type=int, default=30,
                         help='The number of training epoches. Default: 200')
-    parser.add_argument('--batch_size', type=int, default=16,
-                        help='The batch size in training process. Default: 16')
+    parser.add_argument('--batch_size', type=int, default=10,
+                        help='The batch size in training process. Default: 10')
     parser.add_argument('--num_rnn', type=int, default=1,
                         help='The number of RNN cells for each timestamp. Default: 1')
-    parser.add_argument('--feature_name', type=str, default='vgg16', choices=['vgg16', 'i3d'],
+    parser.add_argument('--feature_name', type=str, default='vgg16', choices=['vgg16', 'res101'],
                         help='The name of feature embedding methods. Default: vgg16')
-    parser.add_argument('--test_iter', type=int, default=20,
-                        help='The number of iteration to perform a evaluation process.')
-    parser.add_argument('--hidden_dim', type=int, default=128,
-                        help='The dimension of hidden states in RNN. Default: 128')
-    parser.add_argument('--latent_dim', type=int, default=64,
-                        help='The dimension of latent space. Default: 64')
+    parser.add_argument('--test_iter', type=int, default=64,
+                        help='The number of iteration to perform a evaluation process. Default: 64')
+    parser.add_argument('--hidden_dim', type=int, default=256,
+                        help='The dimension of hidden states in RNN. Default: 256')
+    parser.add_argument('--latent_dim', type=int, default=256,
+                        help='The dimension of latent space. Default: 256')
     parser.add_argument('--with_saa', action='store_false',
                         help='Use self-attention aggregation layer. Default: True')
     parser.add_argument('--uncertainty_ranking', action='store_true',

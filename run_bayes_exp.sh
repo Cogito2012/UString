@@ -5,7 +5,8 @@ set -e
 source activate py37
 PHASE=$1
 GPUS=$2
-EPOCH=$3
+FEATURE=$3
+OUT_DIR=$4
 
 LOG_DIR="./logs"
 if [ ! -d $LOG_DIR ]; then
@@ -22,33 +23,21 @@ case ${PHASE} in
   train)
     CUDA_VISIBLE_DEVICES=$GPUS python BayesGCRNN_accident.py \
       --dataset dad \
-      --feature_name vgg16 \
+      --feature_name $FEATURE \
       --phase train \
       --base_lr 0.001 \
-      --batch_size 10 \
-      --epoch $EPOCH \
-      --test_iter 64 \
-      --uncertainty_ranking \
-      --loss_alpha 0.001 \
-      --loss_beta 10 \
-      --loss_yita 10 \
-      --hidden_dim 256 \
-      --latent_dim 256 \
       --gpus $GPUS \
-      --output_dir ./output_dev/bayes_gcrnn_ranking/vgg16
+      --output_dir ./output_dev/$OUT_DIR/$FEATURE
     ;;
   test)
     CUDA_VISIBLE_DEVICES=$GPUS python BayesGCRNN_accident.py \
       --dataset dad \
-      --feature_name vgg16 \
+      --feature_name $FEATURE \
       --phase test \
-      --batch_size 10 \
-      --hidden_dim 256 \
-      --latent_dim 256 \
       --gpus $GPUS \
       --visualize \
-      --output_dir ./output_dev/bayes_gcrnn_ranking/vgg16 \
-      --model_file ./output_dev/bayes_gcrnn_ranking/vgg16/dad/snapshot/bayesian_gcrnn_model_final.pth
+      --output_dir ./output_dev/$OUT_DIR/$FEATURE \
+      --model_file ./output_dev/$OUT_DIR/$FEATURE/dad/snapshot/bayesian_gcrnn_model_final.pth
     ;;
   *)
     echo "Invalid argument!"
