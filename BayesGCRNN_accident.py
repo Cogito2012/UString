@@ -8,6 +8,7 @@ import numpy as np
 import torch
 import os, time
 import argparse
+import shutil
 
 from torch.utils.data import DataLoader
 from src.GraphModels import BayesGCRNN
@@ -321,13 +322,25 @@ def train_eval():
                     'optimizer': optimizer.state_dict()}, model_file)
         if metrics['AP'] > best_metric:
             best_metric = metrics['AP']
-            os.symlink(model_file, os.path.join(model_dir, 'bayesian_gcrnn_model_final.pth'))
+            # update best model file
+            update_final_model(model_file, os.path.join(model_dir, 'final_model.pth'))
         print('Model has been saved as: %s'%(model_file))
 
         scheduler.step(losses['log_posterior'])
         # write histograms
         write_weight_histograms(logger, model, k+1)
     logger.close()
+
+
+def update_final_model(src_file, dest_file):
+    # source file must exist
+    assert os.path.exists(src_file), "src file does not exist!"
+    # destinate file should be removed first if exists
+    if os.path.exists(dest_file):
+        if not os.path.samefile(src_file, dest_file):
+            os.remove(dest_file)
+    # copy file
+    shutil.copyfile(src_file, dest_file)
 
 
 def test_eval():
@@ -346,8 +359,7 @@ def test_eval():
     p.visualize = False if p.evaluate_all else p.visualize
     vis_dir = None
     if p.visualize:
-        epoch_str = p.model_file.split("_")[-1].split(".pth")[0]
-        vis_dir = os.path.join(result_dir, 'vis_epoch' + epoch_str)
+        vis_dir = os.path.join(result_dir, 'vis')
         if not os.path.exists(vis_dir):
             os.makedirs(vis_dir)
 

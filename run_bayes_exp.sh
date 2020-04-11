@@ -38,7 +38,7 @@ case ${PHASE} in
       --gpus $GPUS \
       --visualize \
       --output_dir ./output_dev/$OUT_DIR/$FEATURE \
-      --model_file ./output_dev/$OUT_DIR/$FEATURE/dad/snapshot/bayesian_gcrnn_model_final.pth
+      --model_file ./output_dev/$OUT_DIR/$FEATURE/dad/snapshot/final_model.pth
     ;;
   *)
     echo "Invalid argument!"
