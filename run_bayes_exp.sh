@@ -48,7 +48,7 @@ case ${PHASE} in
       --gpus $GPUS \
       --visualize \
       --output_dir ./output_dev/bayes_gcrnn_ranking/vgg16 \
-      --model_file ./output_dev/bayes_gcrnn_ranking/vgg16/dad/snapshot/bayesian_gcrnn_model_${EPOCH}.pth
+      --model_file ./output_dev/bayes_gcrnn_ranking/vgg16/dad/snapshot/bayesian_gcrnn_model_final.pth
     ;;
   *)
     echo "Invalid argument!"

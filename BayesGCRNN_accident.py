@@ -265,6 +265,7 @@ def train_eval():
     # write histograms
     write_weight_histograms(logger, model, 0)
     iter_cur = 0
+    best_metric = 0
     for k in range(p.epoch):
         if k <= start_epoch:
             iter_cur += len(traindata_loader)
@@ -306,6 +307,9 @@ def train_eval():
         torch.save({'epoch': k,
                     'model': model.module.state_dict() if len(gpu_ids)>1 else model.state_dict(),
                     'optimizer': optimizer.state_dict()}, model_file)
+        if metrics['AP'] > best_metric:
+            best_metric = metrics['AP']
+            os.symlink(model_file, os.path.join(model_dir, 'bayesian_gcrnn_model_final.pth'))
         print('Model has been saved as: %s'%(model_file))
 
         scheduler.step(losses['log_posterior'])
