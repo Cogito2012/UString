@@ -186,7 +186,7 @@ def extract_features(data_path, video_path, dest_path, phase):
                 features_res101[j, 0, :] = frame_feats
                 features_res101[j, 1:,:] = roi_feats
                 detections[j, :, :] = dets_all
-            np.savez_compressed(feat_file, data=features_res101, det=detections[i], labels=labels[i], ID=vidname)
+            np.savez_compressed(feat_file, data=features_res101, det=detections, labels=labels[i], ID=vidname)
             files_list.append(vidname)
         batch_id += 1
     return files_list
