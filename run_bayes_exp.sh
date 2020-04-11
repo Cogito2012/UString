@@ -26,6 +26,7 @@ case ${PHASE} in
       --feature_name $FEATURE \
       --phase train \
       --base_lr 0.001 \
+      --remove_saa \
       --gpus $GPUS \
       --output_dir ./output_dev/$OUT_DIR/$FEATURE
     ;;
