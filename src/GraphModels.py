@@ -540,7 +540,7 @@ class BayesGCRNN(nn.Module):
             # soft attention to aggregate hidden states of all frames
             embed_video = self.self_aggregation(torch.stack(all_hidden, dim=-1))
             dec = self.predictor_aux(embed_video)
-            L4 = self.ce_loss(dec, y[:, 1].to(torch.long))
+            L4 = torch.mean(self.ce_loss(dec, y[:, 1].to(torch.long)))
             losses['auxloss'] = L4
 
         return losses, all_outputs, all_hidden
