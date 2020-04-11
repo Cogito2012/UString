@@ -220,7 +220,7 @@ def train_eval():
     # hyperparameters
     if p.feature_name == 'vgg16':
         feature_dim = 4096 
-    if p.feature_name == 'i3d':
+    if p.feature_name == 'res101':
         feature_dim = 2048
 
     data_path = os.path.join(ROOT_PATH, p.data_path, p.dataset, p.feature_name + '_features')
@@ -334,7 +334,7 @@ def test_eval():
     # hyperparameters
     if p.feature_name == 'vgg16':
         feature_dim = 4096 
-    if p.feature_name == 'i3d':
+    if p.feature_name == 'res101':
         feature_dim = 2048
 
     data_path = os.path.join(ROOT_PATH, p.data_path, p.dataset, p.feature_name + '_features')
