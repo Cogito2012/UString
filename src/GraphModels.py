@@ -568,13 +568,17 @@ class BayesGCRNN(nn.Module):
         loss = torch.mean(torch.add(torch.mul(pos_loss, target[:, 1]), torch.mul(neg_loss, target[:, 0])))
         return loss
 
-    def _uncertainty_ranking(self, output_dict, Ut):
+    def _uncertainty_ranking(self, output_dict, Ut, eU_only=True):
         """
         :param label: 10 x 2
         :param output_dict: 
         """
         aleatoric = output_dict['aleatoric']  # B x 2 x 2        
         epistemic = output_dict['epistemic']  # B x 2 x 2
-        uncertainty = aleatoric[:, 1, 1] + epistemic[:, 1, 1]  # B
+        if eU_only:
+            # here we use the trace of matrix to quantify uncertainty
+            uncertainty = epistemic[:, 0, 0] + epistemic[:, 1, 1]
+        else:
+            uncertainty = aleatoric[:, 1, 1] + epistemic[:, 1, 1]  # B
         loss = torch.mean(torch.max(torch.zeros_like(Ut).to(Ut.device), uncertainty - Ut))
         return loss, uncertainty

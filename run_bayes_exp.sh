@@ -26,7 +26,7 @@ case ${PHASE} in
       --feature_name $FEATURE \
       --phase train \
       --base_lr 0.001 \
-      --remove_saa \
+      --uncertainty_ranking \
       --gpus $GPUS \
       --output_dir ./output_dev/$OUT_DIR/$FEATURE
     ;;
@@ -35,7 +35,6 @@ case ${PHASE} in
       --dataset dad \
       --feature_name $FEATURE \
       --phase test \
-      --remove_saa \
       --gpus $GPUS \
       --visualize \
       --output_dir ./output_dev/$OUT_DIR/$FEATURE \
