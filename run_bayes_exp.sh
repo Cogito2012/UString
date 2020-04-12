@@ -35,6 +35,7 @@ case ${PHASE} in
       --dataset dad \
       --feature_name $FEATURE \
       --phase test \
+      --remove_saa \
       --gpus $GPUS \
       --visualize \
       --output_dir ./output_dev/$OUT_DIR/$FEATURE \
