@@ -19,7 +19,10 @@ class DADDataset(Dataset):
         self.toTensor = toTensor
         self.device = device
         self.vis = vis
-        self.toa = torch.Tensor([90.0]).to(self.device)
+        self.n_frames = 100
+        self.n_obj = 19
+        self.fps = 20.0
+        self.dim_feature = self.get_feature_dim(feature)
 
         filepath = os.path.join(self.data_path, phase)
         self.files_list = self.get_filelist(filepath)
@@ -27,6 +30,14 @@ class DADDataset(Dataset):
     def __len__(self):
         data_len = len(self.files_list)
         return data_len
+
+    def get_feature_dim(self, feature_name):
+        if feature_name == 'vgg16':
+            return 4096
+        elif feature_name == 'res101':
+            return 2048
+        else:
+            raise ValueError
 
     def get_filelist(self, filepath):
         assert os.path.exists(filepath), "Directory does not exist: %s"%(filepath)
@@ -45,6 +56,10 @@ class DADDataset(Dataset):
             detections = data['det']  # 100 x 19 x 6
         except:
             raise IOError('Load data error! File: %s'%(data_file))
+        if labels[1] > 0:
+            toa = [90.0]
+        else:
+            toa = [self.n_frames + 1]
         
         graph_edges, edge_weights = generate_st_graph(detections)
 
@@ -53,12 +68,13 @@ class DADDataset(Dataset):
             labels = torch.Tensor(labels).to(self.device)
             graph_edges = torch.Tensor(graph_edges).long().to(self.device)
             edge_weights = torch.Tensor(edge_weights).to(self.device)
+            toa = torch.Tensor(toa).to(self.device)
 
         if self.vis:
             video_id = str(data['ID'])[5:11]  # e.g.: b001_000490_*
-            return features, labels, graph_edges, edge_weights, self.toa, detections, video_id
+            return features, labels, graph_edges, edge_weights, toa, detections, video_id
         else:
-            return features, labels, graph_edges, edge_weights, self.toa
+            return features, labels, graph_edges, edge_weights, toa
 
 
 class A3DDataset(Dataset):
@@ -69,12 +85,24 @@ class A3DDataset(Dataset):
         self.toTensor = toTensor
         self.device = device
         self.vis = vis
+        self.n_frames = 100
+        self.n_obj = 19
+        self.fps = 20.0
+        self.dim_feature = self.get_feature_dim(feature)
 
         self.files_list, self.labels_list = self.read_datalist(data_path, phase)
 
     def __len__(self):
         data_len = len(self.files_list)
         return data_len
+
+    def get_feature_dim(self, feature_name):
+        if feature_name == 'vgg16':
+            return 4096
+        elif feature_name == 'res101':
+            return 2048
+        else:
+            raise ValueError
 
     def read_datalist(self, data_path, phase):
         # load training set
@@ -110,9 +138,14 @@ class A3DDataset(Dataset):
         features = data['features']
         label = self.labels_list[index]
         label_onehot = np.array([0, 1]) if label > 0 else np.array([1, 0])
+        # get time of accident
+        file_id = self.files_list[index].split('/')[1].split('.npz')[0]
+        if label > 0:
+            toa = [self.get_toa(file_id)]
+        else:
+            toa = [self.n_frames + 1]
 
         # construct graph
-        file_id = self.files_list[index].split('/')[1].split('.npz')[0]
         attr = 'positive' if label > 0 else 'negative'
         dets_file = os.path.join(self.data_path, 'detections', attr, file_id + '.pkl')
         assert os.path.exists(dets_file), "file not exists: %s"%(dets_file)
@@ -127,14 +160,14 @@ class A3DDataset(Dataset):
             label_onehot = torch.Tensor(label_onehot).to(self.device)  #  2
             graph_edges = torch.Tensor(graph_edges).long().to(self.device)
             edge_weights = torch.Tensor(edge_weights).to(self.device)
+            toa = torch.Tensor(toa).to(self.device)
 
         if self.vis:
-            toa = self.get_toa(file_id)
             video_path = os.path.join(self.data_path, 'video_frames', file_id, 'images')
             assert os.path.exists(video_path)
             return features, label_onehot, graph_edges, edge_weights, toa, detections, video_path
         else:
-            return features, label_onehot, graph_edges, edge_weights
+            return features, label_onehot, graph_edges, edge_weights, toa
 
 
 def generate_st_graph(detections):

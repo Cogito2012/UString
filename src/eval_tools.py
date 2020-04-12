@@ -2,58 +2,63 @@ import numpy as np
 import matplotlib.pyplot as plt
 import os
 
-def evaluation(all_pred, all_labels, total_time = 90, length = None):
-    ### input: all_pred (N x total_time) , all_label (N,)
-    ### where N = number of videos, fps = 20 , time of accident = total_time
-    ### output: AP & Time to Accident
+def evaluation(all_pred, all_labels, time_of_accidents, fps=20.0):
+    """
+    :param: all_pred (N x T), where N is number of videos, T is the number of frames for each video
+    :param: all_labels (N,)
+    :param: time_of_accidents (N,) 
+    :output: AP (average precision, AUC), mTTA (mean Time-to-Accident), TTA@R80 (TTA at Recall=80%)
+    """
 
-    if length is not None:
-        all_pred_tmp = np.zeros(all_pred.shape)
-        for idx, vid in enumerate(length):
-                all_pred_tmp[idx,total_time-vid:] = all_pred[idx,total_time-vid:]
-        all_pred = np.array(all_pred_tmp)
-        temp_shape = sum(length)
-    else:
-        length = [total_time] * all_pred.shape[0]
-        temp_shape = all_pred.shape[0]*total_time
-    Precision = np.zeros((temp_shape))
-    Recall = np.zeros((temp_shape))
-    Time = np.zeros((temp_shape))
-    cnt = 0
-    AP = 0.0
-    for Th in np.arange(np.min(all_pred), 1.0, 0.001):
-        if length is not None and Th <= 0:
-                continue
+    preds_eval = []
+    min_pred = np.inf
+    for idx, toa in enumerate(time_of_accidents):
+        if all_labels[idx] > 0:
+            pred = all_pred[idx, :int(toa)]  # positive video
+        else:
+            pred = all_pred[idx, :]  # negative video
+        # find the minimum prediction
+        min_pred = np.min(pred) if min_pred > np.min(pred) else min_pred
+        preds_eval.append(pred)
+    total_seconds = all_pred.shape[1] / fps
+
+    Precision, Recall, Time = [], [], []
+    # iterate a set of thresholds from the minimum predictions
+    for Th in np.arange(max(min_pred, 0), 1.0, 0.001):
         Tp = 0.0
         Tp_Fp = 0.0
         Tp_Tn = 0.0
         time = 0.0
-        counter = 0.0
-        for i in range(len(all_pred)):
-            tp =  np.where(all_pred[i]*all_labels[i]>=Th)
+        counter = 0.0  # number of TP videos
+        # iterate each video sample
+        for i in range(len(preds_eval)):
+            # true positive frames: (pred->1) * (gt->1)
+            tp =  np.where(preds_eval[i]*all_labels[i]>=Th)
             Tp += float(len(tp[0])>0)
             if float(len(tp[0])>0) > 0:
-                time += tp[0][0] / float(length[i])
+                # if at least one TP, compute the relative (1 - rTTA)
+                time += tp[0][0] / float(time_of_accidents[i])
                 counter = counter+1
-            Tp_Fp += float(len(np.where(all_pred[i]>=Th)[0])>0)
-        if Tp_Fp == 0:
+            # all positive frames
+            Tp_Fp += float(len(np.where(preds_eval[i]>=Th)[0])>0)
+        if Tp_Fp == 0:  # predictions of all videos are negative
             continue
         else:
-            Precision[cnt] = Tp/Tp_Fp
-        if np.sum(all_labels) ==0:
+            Precision.append(Tp/Tp_Fp)
+        if np.sum(all_labels) ==0: # gt of all videos are negative
             continue
         else:
-            Recall[cnt] = Tp/np.sum(all_labels)
+            Recall.append(Tp/np.sum(all_labels))
         if counter == 0:
             continue
         else:
-            Time[cnt] = (1-time/counter)
-        cnt += 1
-
+            Time.append((1-time/counter))
+    # sort the metrics with recall (ascending)
     new_index = np.argsort(Recall)
     Precision = Precision[new_index]
     Recall = Recall[new_index]
     Time = Time[new_index]
+    # unique the recall, and fetch corresponding precisions and TTAs
     _,rep_index = np.unique(Recall,return_index=1)
     rep_index = rep_index[1:]
     new_Time = np.zeros(len(rep_index))
@@ -61,27 +66,25 @@ def evaluation(all_pred, all_labels, total_time = 90, length = None):
     for i in range(len(rep_index)-1):
          new_Time[i] = np.max(Time[rep_index[i]:rep_index[i+1]])
          new_Precision[i] = np.max(Precision[rep_index[i]:rep_index[i+1]])
-
+    # sort by descending order
     new_Time[-1] = Time[rep_index[-1]]
     new_Precision[-1] = Precision[rep_index[-1]]
     new_Recall = Recall[rep_index]
-
+    # compute AP (area under P-R curve)
+    AP = 0.0
     if new_Recall[0] != 0:
         AP += new_Precision[0]*(new_Recall[0]-0)
     for i in range(1,len(new_Precision)):
         AP += (new_Precision[i-1]+new_Precision[i])*(new_Recall[i]-new_Recall[i-1])/2
 
-    mTTA = np.mean(new_Time)
-    print("Average Precision= %.4f, mean Time to accident= %.4f"%(AP, mTTA * 5))
+    # transform the relative mTTA to seconds
+    mTTA = np.mean(new_Time) * total_seconds
+    print("Average Precision= %.4f, mean Time to accident= %.4f"%(AP, mTTA))
     sort_time = new_Time[np.argsort(new_Recall)]
     sort_recall = np.sort(new_Recall)
-    TTA_R80 = sort_time[np.argmin(np.abs(sort_recall-0.8))]
-    print("Recall@80%, Time to accident= " +"{:.4}".format(TTA_R80 * 5))
+    TTA_R80 = sort_time[np.argmin(np.abs(sort_recall-0.8))] * total_seconds
+    print("Recall@80%, Time to accident= " +"{:.4}".format(TTA_R80))
 
-    if mTTA == np.nan:
-        mTTA = 0
-    if TTA_R80 == np.nan:
-        TTA_R80 = 0
     return AP, mTTA, TTA_R80
 
 

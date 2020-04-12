@@ -47,10 +47,11 @@ def average_losses(losses_all):
     return losses_mean
 
 
-def test_all(testdata_loader, model, time=90):
+def test_all(testdata_loader, model):
     
     all_pred = []
     all_labels = []
+    all_toas = []
     losses_all = []
     with torch.no_grad():
         for i, (batch_xs, batch_ys, graph_edges, edge_weights, batch_toas) in enumerate(testdata_loader):
@@ -66,11 +67,10 @@ def test_all(testdata_loader, model, time=90):
             losses_all.append(losses)
 
             num_frames = batch_xs.size()[1]
-            assert num_frames >= time
             batch_size = batch_xs.size()[0]
-            pred_frames = np.zeros((batch_size, time), dtype=np.float32)
+            pred_frames = np.zeros((batch_size, num_frames), dtype=np.float32)
             # run inference
-            for t in range(time):
+            for t in range(num_frames):
                 pred = all_outputs[t]['pred_mean']
                 pred = pred.cpu().numpy() if pred.is_cuda else pred.detach().numpy()
                 pred_frames[:, t] = np.exp(pred[:, 1]) / np.sum(np.exp(pred), axis=1)
@@ -79,13 +79,16 @@ def test_all(testdata_loader, model, time=90):
             label_onehot = batch_ys.cpu().numpy()
             label = np.reshape(label_onehot[:, 1], [batch_size,])
             all_labels.append(label)
+            toas = batch_toas.cpu().numpy().astype(np.int)
+            all_toas.append(toas)
 
     all_pred = np.vstack((np.vstack(all_pred[:-1]), all_pred[-1]))
     all_labels = np.hstack((np.hstack(all_labels[:-1]), all_labels[-1]))
-    return all_pred, all_labels, losses_all
+    all_toas = np.hstack((np.hstack(all_toas[:-1]), all_labels[-1]))
+    return all_pred, all_labels, all_toas, losses_all
 
 
-def test_all_vis(testdata_loader, model, time=90, vis=True, multiGPU=False, device=torch.device('cuda')):
+def test_all_vis(testdata_loader, model, vis=True, multiGPU=False, device=torch.device('cuda')):
     
     if multiGPU:
         model = torch.nn.DataParallel(model)
@@ -94,6 +97,7 @@ def test_all_vis(testdata_loader, model, time=90, vis=True, multiGPU=False, devi
 
     all_pred = []
     all_labels = []
+    all_toas = []
     vis_data = []
     all_uncertains = []
     with torch.no_grad():
@@ -103,12 +107,11 @@ def test_all_vis(testdata_loader, model, time=90, vis=True, multiGPU=False, devi
                     hidden_in=None, edge_weights=edge_weights, npass=10, nbatch=len(testdata_loader), testing=False, eval_uncertain=True)
 
             num_frames = batch_xs.size()[1]
-            assert num_frames >= time
             batch_size = batch_xs.size()[0]
-            pred_frames = np.zeros((batch_size, time), dtype=np.float32)
-            pred_uncertains = np.zeros((batch_size, time, 2), dtype=np.float32)
+            pred_frames = np.zeros((batch_size, num_frames), dtype=np.float32)
+            pred_uncertains = np.zeros((batch_size, num_frames, 2), dtype=np.float32)
             # run inference
-            for t in range(time):
+            for t in range(num_frames):
                 # prediction
                 pred = all_outputs[t]['pred_mean']  # B x 2
                 pred = pred.cpu().numpy() if pred.is_cuda else pred.detach().numpy()
@@ -118,27 +121,29 @@ def test_all_vis(testdata_loader, model, time=90, vis=True, multiGPU=False, devi
                 aleatoric = aleatoric.cpu().numpy() if aleatoric.is_cuda else aleatoric.detach().numpy()
                 epistemic = all_outputs[t]['epistemic']  # B x 2 x 2
                 epistemic = epistemic.cpu().numpy() if epistemic.is_cuda else epistemic.detach().numpy()
-                pred_uncertains[:, t, 0] = aleatoric[:, 1, 1]
-                pred_uncertains[:, t, 1] = epistemic[:, 1, 1]
+                pred_uncertains[:, t, 0] = aleatoric[:, 0, 0] + aleatoric[:, 1, 1]
+                pred_uncertains[:, t, 1] = epistemic[:, 0, 0] + epistemic[:, 1, 1]
 
             # gather results and ground truth
             all_pred.append(pred_frames)
             label_onehot = batch_ys.cpu().numpy()
             label = np.reshape(label_onehot[:, 1], [batch_size,])
             all_labels.append(label)
+            toas = batch_toas.cpu().numpy().astype(np.int)
+            all_toas.append(toas)
             all_uncertains.append(pred_uncertains)
 
             if vis:
                 # gather data for visualization
-                batch_toas = batch_toas.cpu().numpy() if batch_toas.is_cuda else batch_toas.detach().numpy()
                 vis_data.append({'pred_frames': pred_frames, 'label': label, 'pred_uncertain': pred_uncertains,
-                                'toa': batch_toas, 'detections': detections, 'video_ids': video_ids})
+                                'toa': toas, 'detections': detections, 'video_ids': video_ids})
 
     all_pred = np.vstack((np.vstack(all_pred[:-1]), all_pred[-1]))
     all_labels = np.hstack((np.hstack(all_labels[:-1]), all_labels[-1]))
+    all_toas = np.hstack((np.hstack(all_toas[:-1]), all_labels[-1]))
     all_uncertains = np.vstack((np.vstack(all_uncertains[:-1]), all_uncertains[-1]))
-    return all_pred, all_labels, all_uncertains, vis_data
 
+    return all_pred, all_labels, all_toas, all_uncertains, vis_data
 
 
 def write_scalars(logger, cur_epoch, cur_iter, losses, lr):
@@ -219,12 +224,7 @@ def load_checkpoint(model, optimizer=None, filename='checkpoint.pth.tar', isTrai
 
 
 def train_eval():
-    # hyperparameters
-    if p.feature_name == 'vgg16':
-        feature_dim = 4096 
-    if p.feature_name == 'res101':
-        feature_dim = 2048
-
+    ### --- CONFIG PATH ---
     data_path = os.path.join(ROOT_PATH, p.data_path, p.dataset)
     # model snapshots
     model_dir = os.path.join(p.output_dir, p.dataset, 'snapshot')
@@ -237,28 +237,10 @@ def train_eval():
     logger = SummaryWriter(logs_dir)
 
     # gpu options
-    # ipdb.set_trace()
     gpu_ids = [int(id) for id in p.gpus.split(',')]
     print("Using GPU devices: ", gpu_ids)
     os.environ['CUDA_VISIBLE_DEVICES'] = p.gpus
     device = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
-
-    # building model
-    model = BayesGCRNN(feature_dim, p.hidden_dim, p.latent_dim, p.num_rnn, with_saa=(not p.remove_saa), uncertain_ranking=p.uncertainty_ranking)
-
-    # optimizer
-    optimizer = torch.optim.Adam(model.parameters(), lr=p.base_lr)
-    scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', factor=0.5, patience=5)
-
-    # resume training 
-    start_epoch = -1
-    if p.resume:
-        model, optimizer, start_epoch = load_checkpoint(model, optimizer=optimizer, filename=p.model_file)
-
-    if len(gpu_ids) > 1:
-        model = torch.nn.DataParallel(model)
-    model = model.to(device=device)
-    model.train() # set the model into training status
 
     # create data loader
     if p.dataset == 'dad':
@@ -273,6 +255,25 @@ def train_eval():
         raise NotImplementedError
     traindata_loader = DataLoader(dataset=train_data, batch_size=p.batch_size, shuffle=True, drop_last=True)
     testdata_loader = DataLoader(dataset=test_data, batch_size=p.batch_size, shuffle=False, drop_last=True)
+    
+    # building model
+    model = BayesGCRNN(train_data.dim_feature, p.hidden_dim, p.latent_dim, 
+                       n_layers=p.num_rnn, n_obj=train_data.n_obj, n_frames=train_data.n_frames, fps=train_data.fps, 
+                       with_saa=(not p.remove_saa), uncertain_ranking=p.uncertainty_ranking)
+
+    # optimizer
+    optimizer = torch.optim.Adam(model.parameters(), lr=p.base_lr)
+    scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', factor=0.5, patience=5)
+
+    # resume training 
+    start_epoch = -1
+    if p.resume:
+        model, optimizer, start_epoch = load_checkpoint(model, optimizer=optimizer, filename=p.model_file)
+
+    if len(gpu_ids) > 1:
+        model = torch.nn.DataParallel(model)
+    model = model.to(device=device)
+    model.train() # set the model into training status
 
     # write histograms
     write_weight_histograms(logger, model, 0)
@@ -305,13 +306,13 @@ def train_eval():
             # test and evaluate the model
             if iter_cur % p.test_iter == 0:
                 model.eval()
-                all_pred, all_labels, losses_all = test_all(testdata_loader, model, time=90)
+                all_pred, all_labels, all_toas, losses_all = test_all(testdata_loader, model)
                 model.train()
                 loss_val = average_losses(losses_all)
                 print('----------------------------------')
                 print("Starting evaluation...")
                 metrics = {}
-                metrics['AP'], metrics['mTTA'], metrics['TTA_R80'] = evaluation(all_pred, all_labels, total_time=90)
+                metrics['AP'], metrics['mTTA'], metrics['TTA_R80'] = evaluation(all_pred, all_labels, all_toas, fps=test_data.fps)
                 print('----------------------------------')
                 # keep track of validation losses
                 write_test_scalars(logger, k, iter_cur, loss_val, metrics)
@@ -345,12 +346,7 @@ def update_final_model(src_file, dest_file):
 
 
 def test_eval():
-    # hyperparameters
-    if p.feature_name == 'vgg16':
-        feature_dim = 4096 
-    if p.feature_name == 'res101':
-        feature_dim = 2048
-
+    ### --- CONFIG PATH ---
     data_path = os.path.join(ROOT_PATH, p.data_path, p.dataset)
     # result path
     result_dir = os.path.join(p.output_dir, p.dataset, 'test')
@@ -383,7 +379,9 @@ def test_eval():
     print("Number of testing samples: %d"%(num_samples))
     
     # building model
-    model = BayesGCRNN(feature_dim, p.hidden_dim, p.latent_dim, p.num_rnn, with_saa=(not p.remove_saa))
+    model = BayesGCRNN(test_data.dim_feature, p.hidden_dim, p.latent_dim, 
+                       n_layers=p.num_rnn, n_obj=test_data.n_obj, n_frames=test_data.n_frames, fps=test_data.fps, 
+                       with_saa=(not p.remove_saa), uncertain_ranking=p.uncertainty_ranking)
 
     # start to evaluate
     if p.evaluate_all:
@@ -397,9 +395,9 @@ def test_eval():
             model_file = os.path.join(model_dir, filename)
             model, _, _ = load_checkpoint(model, filename=model_file, isTraining=False)
             # run model inference
-            all_pred, all_labels, all_uncertains, _ = test_all_vis(testdata_loader, model, time=90, vis=False, device=device)
+            all_pred, all_labels, all_toas, all_uncertains, _ = test_all_vis(testdata_loader, model, vis=False, device=device)
             # evaluate results
-            AP, mTTA, TTA_R80 = evaluation(all_pred, all_labels, total_time=90)
+            AP, mTTA, TTA_R80 = evaluation(all_pred, all_labels, all_toas, fps=test_data.fps)
             AP_all.append(AP)
             mTTA_all.append(mTTA)
             TTA_R80_all.append(TTA_R80)
@@ -410,15 +408,16 @@ def test_eval():
         if not os.path.exists(result_file):
             model, _, _ = load_checkpoint(model, filename=p.model_file, isTraining=False)
             # run model inference
-            all_pred, all_labels, all_uncertains, vis_data = test_all_vis(testdata_loader, model, time=90, vis=True, device=device)
+            all_pred, all_labels, all_toas, all_uncertains, vis_data = test_all_vis(testdata_loader, model, vis=True, device=device)
             # save predictions
-            np.savez(result_file[:-4], pred=all_pred, label=all_labels, uncertainties=all_uncertains, vis_data=vis_data)
+            np.savez(result_file[:-4], pred=all_pred, label=all_labels, toas=all_toas, uncertainties=all_uncertains, vis_data=vis_data)
         else:
             print("Result file exists. Loaded from cache.")
             all_results = np.load(result_file, allow_pickle=True)
-            all_pred, all_labels, all_uncertains, vis_data = all_results['pred'], all_results['label'], all_results['uncertainties'], all_results['vis_data']
+            all_pred, all_labels, all_toas, all_uncertains, vis_data = \
+                all_results['pred'], all_results['label'], all_results['toas'], all_results['uncertainties'], all_results['vis_data']
         # evaluate results
-        AP, mTTA, TTA_R80 = evaluation(all_pred, all_labels, total_time=90)
+        AP, mTTA, TTA_R80 = evaluation(all_pred, all_labels, all_toas, fps=test_data.fps)
         # evaluate uncertainties
         mUncertains = np.mean(all_uncertains, axis=(0, 1))
         print("Mean aleatoric uncertainty: %.6f"%(mUncertains[0]))
