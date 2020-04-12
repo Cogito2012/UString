@@ -53,9 +53,9 @@ def test_all(testdata_loader, model, time=90):
     all_labels = []
     losses_all = []
     with torch.no_grad():
-        for i, (batch_xs, batch_ys, graph_edges, edge_weights) in enumerate(testdata_loader):
+        for i, (batch_xs, batch_ys, graph_edges, edge_weights, batch_toas) in enumerate(testdata_loader):
             # run forward inference
-            losses, all_outputs, hiddens = model(batch_xs, batch_ys, graph_edges, 
+            losses, all_outputs, hiddens = model(batch_xs, batch_ys, batch_toas, graph_edges, 
                     hidden_in=None, edge_weights=edge_weights, npass=10, nbatch=len(testdata_loader), testing=False)
             # make total loss
             losses['total_loss'] = p.loss_alpha * (losses['log_posterior'] - losses['log_prior']) + losses['cross_entropy']
@@ -97,9 +97,9 @@ def test_all_vis(testdata_loader, model, time=90, vis=True, multiGPU=False, devi
     vis_data = []
     all_uncertains = []
     with torch.no_grad():
-        for i, (batch_xs, batch_ys, graph_edges, edge_weights, toa, detections, video_ids) in tqdm(enumerate(testdata_loader), desc="batch progress", total=len(testdata_loader)):
+        for i, (batch_xs, batch_ys, graph_edges, edge_weights, batch_toas, detections, video_ids) in tqdm(enumerate(testdata_loader), desc="batch progress", total=len(testdata_loader)):
             # run forward inference
-            losses, all_outputs, hiddens = model(batch_xs, batch_ys, graph_edges, 
+            losses, all_outputs, hiddens = model(batch_xs, batch_ys, batch_toas, graph_edges, 
                     hidden_in=None, edge_weights=edge_weights, npass=10, nbatch=len(testdata_loader), testing=False, eval_uncertain=True)
 
             num_frames = batch_xs.size()[1]
@@ -130,8 +130,9 @@ def test_all_vis(testdata_loader, model, time=90, vis=True, multiGPU=False, devi
 
             if vis:
                 # gather data for visualization
+                batch_toas = batch_toas.cpu().numpy() if batch_toas.is_cuda else batch_toas.detach().numpy()
                 vis_data.append({'pred_frames': pred_frames, 'label': label, 'pred_uncertain': pred_uncertains,
-                                'toa': toa, 'detections': detections, 'video_ids': video_ids})
+                                'toa': batch_toas, 'detections': detections, 'video_ids': video_ids})
 
     all_pred = np.vstack((np.vstack(all_pred[:-1]), all_pred[-1]))
     all_labels = np.hstack((np.hstack(all_labels[:-1]), all_labels[-1]))
@@ -281,10 +282,10 @@ def train_eval():
         if k <= start_epoch:
             iter_cur += len(traindata_loader)
             continue
-        for i, (batch_xs, batch_ys, graph_edges, edge_weights) in enumerate(traindata_loader):
+        for i, (batch_xs, batch_ys, graph_edges, edge_weights, batch_toas) in enumerate(traindata_loader):
             # ipdb.set_trace()
             optimizer.zero_grad()
-            losses, all_outputs, hidden_st = model(batch_xs, batch_ys, graph_edges, edge_weights=edge_weights, npass=2, nbatch=len(traindata_loader), eval_uncertain=True)
+            losses, all_outputs, hidden_st = model(batch_xs, batch_ys, batch_toas, graph_edges, edge_weights=edge_weights, npass=2, nbatch=len(traindata_loader), eval_uncertain=True)
             complexity_loss = losses['log_posterior'] - losses['log_prior']
             losses['total_loss'] = p.loss_alpha * complexity_loss + losses['cross_entropy']
             if not p.remove_saa:

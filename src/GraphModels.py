@@ -483,9 +483,11 @@ class BayesGCRNN(nn.Module):
         self.ce_loss = torch.nn.CrossEntropyLoss(reduction='none')
 
 
-    def forward(self, x, y, graph, hidden_in=None, edge_weights=None, npass=2, nbatch=80, testing=False, eval_uncertain=False):
+    def forward(self, x, y, toa, graph, hidden_in=None, edge_weights=None, npass=2, nbatch=80, testing=False, eval_uncertain=False):
         """
         :param x, (batchsize, nFrames, nBoxes, Xdim) = (10 x 100 x 20 x 4096)
+        :param y, (10 x 2)
+        :param toa, (10,)
         """
         losses = {'cross_entropy': 0,
                   'log_posterior': 0,
@@ -526,7 +528,7 @@ class BayesGCRNN(nn.Module):
             # computing losses
             L1 = output_dict['log_posterior'] / nbatch
             L2 = output_dict['log_prior'] / nbatch
-            L3 = self._exp_loss(dec_t, y, t, frames=self.n_frames, fps=self.fps)
+            L3 = self._exp_loss(dec_t, y, t, toa=toa, fps=self.fps)
             losses['log_posterior'] += L1
             losses['log_prior'] += L2
             losses['cross_entropy'] += L3
@@ -548,20 +550,20 @@ class BayesGCRNN(nn.Module):
         return losses, all_outputs, all_hidden
 
 
-    def _exp_loss(self, pred, target, time, frames=100, fps=20.0):
+    def _exp_loss(self, pred, target, time, toa, fps=20.0):
         '''
         :param pred:
         :param target: onehot codings for binary classification
         :param time:
-        :param frames:
+        :param toa:
         :param fps:
         :return:
         '''
         # positive example (exp_loss)
         target_cls = target[:, 1]
         target_cls = target_cls.to(torch.long)
-        pos_loss = -torch.mul(torch.exp(-torch.tensor((frames - time - 1) / fps)),
-                              -self.ce_loss(pred, target_cls))
+        penalty = -torch.max(torch.zeros_like(toa).to(toa.device, pred.dtype), (toa.to(pred.dtype) - time - 1) / fps)
+        pos_loss = -torch.mul(torch.exp(penalty), -self.ce_loss(pred, target_cls))
         # negative example
         neg_loss = self.ce_loss(pred, target_cls)
 

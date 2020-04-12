@@ -19,6 +19,7 @@ class DADDataset(Dataset):
         self.toTensor = toTensor
         self.device = device
         self.vis = vis
+        self.toa = torch.Tensor([90.0]).to(self.device)
 
         filepath = os.path.join(self.data_path, phase)
         self.files_list = self.get_filelist(filepath)
@@ -54,11 +55,10 @@ class DADDataset(Dataset):
             edge_weights = torch.Tensor(edge_weights).to(self.device)
 
         if self.vis:
-            toa = 90
             video_id = str(data['ID'])[5:11]  # e.g.: b001_000490_*
-            return features, labels, graph_edges, edge_weights, toa, detections, video_id
+            return features, labels, graph_edges, edge_weights, self.toa, detections, video_id
         else:
-            return features, labels, graph_edges, edge_weights
+            return features, labels, graph_edges, edge_weights, self.toa
 
 
 class A3DDataset(Dataset):
