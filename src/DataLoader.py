@@ -20,7 +20,7 @@ class DADDataset(Dataset):
         self.device = device
         self.vis = vis
 
-        filepath = os.path.join(data_path, phase)
+        filepath = os.path.join(self.data_path, phase)
         self.files_list = self.get_filelist(filepath)
 
     def __len__(self):

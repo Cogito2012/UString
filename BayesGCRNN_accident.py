@@ -382,7 +382,7 @@ def test_eval():
     print("Number of testing samples: %d"%(num_samples))
     
     # building model
-    model = BayesGCRNN(feature_dim, p.hidden_dim, p.latent_dim, p.num_rnn)
+    model = BayesGCRNN(feature_dim, p.hidden_dim, p.latent_dim, p.num_rnn, with_saa=(not p.remove_saa))
 
     # start to evaluate
     if p.evaluate_all:
