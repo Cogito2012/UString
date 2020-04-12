@@ -224,7 +224,7 @@ def train_eval():
     if p.feature_name == 'res101':
         feature_dim = 2048
 
-    data_path = os.path.join(ROOT_PATH, p.data_path, p.dataset, p.feature_name + '_features')
+    data_path = os.path.join(ROOT_PATH, p.data_path, p.dataset)
     # model snapshots
     model_dir = os.path.join(p.output_dir, p.dataset, 'snapshot')
     if not os.path.exists(model_dir):
@@ -262,12 +262,12 @@ def train_eval():
     # create data loader
     if p.dataset == 'dad':
         from src.DataLoader import DADDataset
-        train_data = DADDataset(data_path, 'training', toTensor=True, device=device)
-        test_data = DADDataset(data_path, 'testing', toTensor=True, device=device)
+        train_data = DADDataset(data_path, p.feature_name, 'training', toTensor=True, device=device)
+        test_data = DADDataset(data_path, p.feature_name, 'testing', toTensor=True, device=device)
     elif p.dataset == 'a3d':
         from src.DataLoader import A3DDataset
-        train_data = A3DDataset(data_path, 'train', toTensor=True, device=device)
-        test_data = A3DDataset(data_path, 'test', toTensor=True, device=device)
+        train_data = A3DDataset(data_path, p.feature_name, 'train', toTensor=True, device=device)
+        test_data = A3DDataset(data_path, p.feature_name, 'test', toTensor=True, device=device)
     else:
         raise NotImplementedError
     traindata_loader = DataLoader(dataset=train_data, batch_size=p.batch_size, shuffle=True, drop_last=True)
@@ -350,7 +350,7 @@ def test_eval():
     if p.feature_name == 'res101':
         feature_dim = 2048
 
-    data_path = os.path.join(ROOT_PATH, p.data_path, p.dataset, p.feature_name + '_features')
+    data_path = os.path.join(ROOT_PATH, p.data_path, p.dataset)
     # result path
     result_dir = os.path.join(p.output_dir, p.dataset, 'test')
     if not os.path.exists(result_dir):
@@ -371,12 +371,10 @@ def test_eval():
     # create data loader
     if p.dataset == 'dad':
         from src.DataLoader import DADDataset
-        phase = 'testing'
-        test_data = DADDataset(data_path, phase, toTensor=True, device=device, vis=True)
+        test_data = DADDataset(data_path, p.feature_name, 'testing', toTensor=True, device=device, vis=True)
     elif p.dataset == 'a3d':
         from src.DataLoader import A3DDataset
-        phase = 'test'
-        test_data = A3DDataset(data_path, phase, toTensor=True, device=device, vis=True)
+        test_data = A3DDataset(data_path, p.feature_name, 'test', toTensor=True, device=device, vis=True)
     else:
         raise NotImplementedError
     testdata_loader = DataLoader(dataset=test_data, batch_size=p.batch_size, shuffle=False, drop_last=True)

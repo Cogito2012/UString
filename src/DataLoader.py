@@ -12,8 +12,9 @@ import itertools
 
 
 class DADDataset(Dataset):
-    def __init__(self, data_path, phase='training', toTensor=False, device=torch.device('cuda'), vis=False):
-        self.data_path = data_path
+    def __init__(self, data_path, feature, phase='training', toTensor=False, device=torch.device('cuda'), vis=False):
+        self.data_path = os.path.join(data_path, feature + '_features')
+        self.feature = feature
         self.phase = phase
         self.toTensor = toTensor
         self.device = device
@@ -61,8 +62,9 @@ class DADDataset(Dataset):
 
 
 class A3DDataset(Dataset):
-    def __init__(self, data_path, phase='train', toTensor=False, device=torch.device('cuda'), vis=False):
-        self.data_path = data_path  # VGRNN/data/a3d/
+    def __init__(self, data_path, feature, phase='train', toTensor=False, device=torch.device('cuda'), vis=False):
+        self.data_path = data_path
+        self.feature = feature
         self.phase = phase
         self.toTensor = toTensor
         self.device = device
@@ -76,7 +78,8 @@ class A3DDataset(Dataset):
 
     def read_datalist(self, data_path, phase):
         # load training set
-        list_file = os.path.join(data_path, 'features', '%s.txt' % (phase))
+        list_file = os.path.join(data_path, self.feature + '_features', '%s.txt' % (phase))
+        assert os.path.exists(list_file), "file not exists: %s"%(list_file)
         fid = open(list_file, 'r')
         data_files, data_labels = [], []
         for line in fid.readlines():
@@ -101,8 +104,8 @@ class A3DDataset(Dataset):
         return toa
 
     def __getitem__(self, index):
-        data_file = os.path.join(self.data_path, 'features', self.files_list[index])
-        assert os.path.exists(data_file)
+        data_file = os.path.join(self.data_path, self.feature + '_features', self.files_list[index])
+        assert os.path.exists(data_file), "file not exists: %s"%(data_file)
         data = np.load(data_file)
         features = data['features']
         label = self.labels_list[index]
@@ -112,7 +115,7 @@ class A3DDataset(Dataset):
         file_id = self.files_list[index].split('/')[1].split('.npz')[0]
         attr = 'positive' if label > 0 else 'negative'
         dets_file = os.path.join(self.data_path, 'detections', attr, file_id + '.pkl')
-        assert os.path.exists(dets_file)
+        assert os.path.exists(dets_file), "file not exists: %s"%(dets_file)
         with open(dets_file, 'rb') as f:
             detections = pickle.load(f)
             detections = np.array(detections)  # 100 x 19 x 6
@@ -193,20 +196,20 @@ if __name__ == '__main__':
     batch_size = 16
     from torch.utils.data import DataLoader
 
-#    # test A3D dataset
-#    data_path = '../data/a3d'
-#    train_data = A3DDataset(data_path, 'train', toTensor=True, device='gpu')
-#    a3d_loader = DataLoader(dataset=train_data, batch_size=batch_size, shuffle=False)
-#    for e in range(epoch):
-#        print('Epoch: %d'%(e))
-#        b = 1
-#        for features, labels, graph_edges, edge_weights in a3d_loader:
-#            print('--------batch: %d--------'%(b))
-#            print('feature dim:', features.size())
-#            print('label dim:', labels.size())
-#            print('graph edges dim:', graph_edges.size())
-#            print('edge weights dim:', edge_weights.size())
-#            b += 1
+    # test A3D dataset
+    data_path = '../data/a3d'
+    train_data = A3DDataset(data_path, 'train', toTensor=True, device='gpu')
+    a3d_loader = DataLoader(dataset=train_data, batch_size=batch_size, shuffle=False)
+    for e in range(epoch):
+        print('Epoch: %d'%(e))
+        b = 1
+        for features, labels, graph_edges, edge_weights in a3d_loader:
+            print('--------batch: %d--------'%(b))
+            print('feature dim:', features.size())
+            print('label dim:', labels.size())
+            print('graph edges dim:', graph_edges.size())
+            print('edge weights dim:', edge_weights.size())
+            b += 1
 
 
     # test DAD dataset

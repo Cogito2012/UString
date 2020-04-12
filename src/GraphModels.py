@@ -360,7 +360,7 @@ class BayesianPredictor(nn.Module):
 
 # GCRNN model
 class GCRNN(nn.Module):
-    def __init__(self, x_dim, h_dim, z_dim, n_layers=1, n_obj=19, n_frames=100):
+    def __init__(self, x_dim, h_dim, z_dim, n_layers=1, n_obj=19, n_frames=100, fps=20.0):
         super(GCRNN, self).__init__()
 
         self.x_dim = x_dim
@@ -369,6 +369,7 @@ class GCRNN(nn.Module):
         self.n_layers = n_layers
         self.n_obj = n_obj
         self.n_frames = n_frames
+        self.fps = fps
 
         self.phi_x = nn.Sequential(nn.Linear(x_dim, h_dim), nn.ReLU())
 
@@ -416,7 +417,7 @@ class GCRNN(nn.Module):
             h = self.rnn(torch.cat([x_t, z_t], 2), edge_idx[:, t], h, edge_weight=edge_weights[:, t])  # 640-->256
 
             # computing losses
-            acc_loss += self._exp_loss(dec_t, y, t)
+            acc_loss += self._exp_loss(dec_t, y, t, frames=self.n_frames, fps=self.fps)
 
             all_dec.append(dec_t)
             all_hidden.append(h[-1])
@@ -451,7 +452,7 @@ class GCRNN(nn.Module):
 
 
 class BayesGCRNN(nn.Module):
-    def __init__(self, x_dim, h_dim, z_dim, n_layers=1, n_obj=19, n_frames=100, with_saa=True, uncertain_ranking=False):
+    def __init__(self, x_dim, h_dim, z_dim, n_layers=1, n_obj=19, n_frames=100, fps=20.0, with_saa=True, uncertain_ranking=False):
         super(BayesGCRNN, self).__init__()
 
         self.x_dim = x_dim
@@ -460,8 +461,9 @@ class BayesGCRNN(nn.Module):
         self.n_layers = n_layers
         self.n_obj = n_obj
         self.n_frames = n_frames
-        self.uncertain_ranking = uncertain_ranking
+        self.fps = fps
         self.with_saa = with_saa
+        self.uncertain_ranking = uncertain_ranking
 
         self.phi_x = nn.Sequential(nn.Linear(x_dim, h_dim), nn.ReLU())
 
@@ -524,7 +526,7 @@ class BayesGCRNN(nn.Module):
             # computing losses
             L1 = output_dict['log_posterior'] / nbatch
             L2 = output_dict['log_prior'] / nbatch
-            L3 = self._exp_loss(dec_t, y, t)
+            L3 = self._exp_loss(dec_t, y, t, frames=self.n_frames, fps=self.fps)
             losses['log_posterior'] += L1
             losses['log_prior'] += L2
             losses['cross_entropy'] += L3
