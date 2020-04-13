@@ -6,7 +6,7 @@ def evaluation(all_pred, all_labels, time_of_accidents, fps=20.0):
     """
     :param: all_pred (N x T), where N is number of videos, T is the number of frames for each video
     :param: all_labels (N,)
-    :param: time_of_accidents (N,) 
+    :param: time_of_accidents (N,) int element
     :output: AP (average precision, AUC), mTTA (mean Time-to-Accident), TTA@R80 (TTA at Recall=80%)
     """
 
@@ -14,7 +14,7 @@ def evaluation(all_pred, all_labels, time_of_accidents, fps=20.0):
     min_pred = np.inf
     for idx, toa in enumerate(time_of_accidents):
         if all_labels[idx] > 0:
-            pred = all_pred[idx, :int(toa)]  # positive video
+            pred = all_pred[idx, :toa]  # positive video
         else:
             pred = all_pred[idx, :]  # negative video
         # find the minimum prediction
@@ -22,8 +22,12 @@ def evaluation(all_pred, all_labels, time_of_accidents, fps=20.0):
         preds_eval.append(pred)
     total_seconds = all_pred.shape[1] / fps
 
-    Precision, Recall, Time = [], [], []
     # iterate a set of thresholds from the minimum predictions
+    temp_shape = int((1.0 - max(min_pred, 0)) / 0.001)
+    Precision = np.zeros((temp_shape))
+    Recall = np.zeros((temp_shape))
+    Time = np.zeros((temp_shape))
+    cnt = 0
     for Th in np.arange(max(min_pred, 0), 1.0, 0.001):
         Tp = 0.0
         Tp_Fp = 0.0
@@ -44,15 +48,16 @@ def evaluation(all_pred, all_labels, time_of_accidents, fps=20.0):
         if Tp_Fp == 0:  # predictions of all videos are negative
             continue
         else:
-            Precision.append(Tp/Tp_Fp)
+            Precision[cnt] = Tp/Tp_Fp
         if np.sum(all_labels) ==0: # gt of all videos are negative
             continue
         else:
-            Recall.append(Tp/np.sum(all_labels))
+            Recall[cnt] = Tp/np.sum(all_labels)
         if counter == 0:
             continue
         else:
-            Time.append((1-time/counter))
+            Time[cnt] = (1-time/counter)
+        cnt += 1
     # sort the metrics with recall (ascending)
     new_index = np.argsort(Recall)
     Precision = Precision[new_index]
