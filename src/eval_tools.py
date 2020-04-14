@@ -14,7 +14,7 @@ def evaluation(all_pred, all_labels, time_of_accidents, fps=20.0):
     min_pred = np.inf
     for idx, toa in enumerate(time_of_accidents):
         if all_labels[idx] > 0:
-            pred = all_pred[idx, :toa]  # positive video
+            pred = all_pred[idx, :int(toa)]  # positive video
         else:
             pred = all_pred[idx, :]  # negative video
         # find the minimum prediction
