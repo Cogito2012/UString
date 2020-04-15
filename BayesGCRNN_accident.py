@@ -84,7 +84,8 @@ def test_all(testdata_loader, model):
 
     all_pred = np.vstack((np.vstack(all_pred[:-1]), all_pred[-1]))
     all_labels = np.hstack((np.hstack(all_labels[:-1]), all_labels[-1]))
-    all_toas = np.hstack((np.hstack(all_toas[:-1]), all_labels[-1]))
+    all_toas = np.hstack((np.hstack(all_toas[:-1]), all_toas[-1]))
+    
     return all_pred, all_labels, all_toas, losses_all
 
 
@@ -129,7 +130,7 @@ def test_all_vis(testdata_loader, model, vis=True, multiGPU=False, device=torch.
             label_onehot = batch_ys.cpu().numpy()
             label = np.reshape(label_onehot[:, 1], [batch_size,])
             all_labels.append(label)
-            toas = batch_toas.cpu().numpy().astype(np.int)
+            toas = np.squeeze(batch_toas.cpu().numpy()).astype(np.int)
             all_toas.append(toas)
             all_uncertains.append(pred_uncertains)
 

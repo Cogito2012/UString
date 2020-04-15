@@ -12,6 +12,7 @@ def evaluation(all_pred, all_labels, time_of_accidents, fps=20.0):
 
     preds_eval = []
     min_pred = np.inf
+    n_frames = 0
     for idx, toa in enumerate(time_of_accidents):
         if all_labels[idx] > 0:
             pred = all_pred[idx, :int(toa)]  # positive video
@@ -20,13 +21,14 @@ def evaluation(all_pred, all_labels, time_of_accidents, fps=20.0):
         # find the minimum prediction
         min_pred = np.min(pred) if min_pred > np.min(pred) else min_pred
         preds_eval.append(pred)
+        n_frames += len(pred)
     total_seconds = all_pred.shape[1] / fps
 
     # iterate a set of thresholds from the minimum predictions
-    temp_shape = int((1.0 - max(min_pred, 0)) / 0.001)
-    Precision = np.zeros((temp_shape))
-    Recall = np.zeros((temp_shape))
-    Time = np.zeros((temp_shape))
+    # temp_shape = int((1.0 - max(min_pred, 0)) / 0.001 + 0.5) 
+    Precision = np.zeros((n_frames))
+    Recall = np.zeros((n_frames))
+    Time = np.zeros((n_frames))
     cnt = 0
     for Th in np.arange(max(min_pred, 0), 1.0, 0.001):
         Tp = 0.0
