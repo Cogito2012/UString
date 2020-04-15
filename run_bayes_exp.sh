@@ -5,8 +5,8 @@ set -e
 source activate py37
 PHASE=$1
 GPUS=$2
-FEATURE=$3
-OUT_DIR=$4
+DATA=$3
+FEATURE=$4
 
 LOG_DIR="./logs"
 if [ ! -d $LOG_DIR ]; then
@@ -22,22 +22,22 @@ echo Logging output to "$LOG"
 case ${PHASE} in
   train)
     CUDA_VISIBLE_DEVICES=$GPUS python BayesGCRNN_accident.py \
-      --dataset dad \
+      --dataset $DATA \
       --feature_name $FEATURE \
       --phase train \
       --base_lr 0.001 \
       --gpus $GPUS \
-      --output_dir ./output_dev/$OUT_DIR/$FEATURE
+      --output_dir ./output_dev/BayesGCRM/$FEATURE
     ;;
   test)
     CUDA_VISIBLE_DEVICES=$GPUS python BayesGCRNN_accident.py \
-      --dataset dad \
+      --dataset $DATA \
       --feature_name $FEATURE \
       --phase test \
       --gpus $GPUS \
       --visualize \
-      --output_dir ./output_dev/$OUT_DIR/$FEATURE \
-      --model_file ./output_dev/$OUT_DIR/$FEATURE/dad/snapshot/final_model.pth
+      --output_dir ./output_dev/BayesGCRM/$FEATURE \
+      --model_file ./output_dev/BayesGCRM/$FEATURE/dad/snapshot/final_model.pth
     ;;
   *)
     echo "Invalid argument!"

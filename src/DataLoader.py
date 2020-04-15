@@ -129,6 +129,7 @@ class A3DDataset(Dataset):
         f.close()
         label_all = np.array(label_all, dtype=np.int32)
         toa = np.where(label_all == 1)[0][0]
+        toa = max(1, toa)  # time-of-accident should not be equal to zero
         return toa
 
     def __getitem__(self, index):
