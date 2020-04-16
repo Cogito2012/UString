@@ -37,7 +37,7 @@ case ${PHASE} in
       --gpus $GPUS \
       --visualize \
       --output_dir ./output_dev/BayesGCRM/$FEATURE \
-      --model_file ./output_dev/BayesGCRM/$FEATURE/dad/snapshot/final_model.pth
+      --model_file ./output_dev/BayesGCRM/$FEATURE/$DATA/snapshot/final_model.pth
     ;;
   *)
     echo "Invalid argument!"
