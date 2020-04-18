@@ -178,7 +178,7 @@ if __name__ == "__main__":
     precision, recall, tta = evaluation(all_pred, all_labels, toas, fps=20.0)
 
     # eval our own model (Bayes GCN-RNN)
-    result_file = os.path.join(result_dir, "../backup/bayes_gcrnn_0402/vgg16/dad/test_bk/pred_res.npz")
+    result_file = os.path.join(result_dir, "bayes_gcrnn_0402/vgg16/dad/test/pred_res.npz")
     data = np.load(result_file)
     all_pred = data['pred']
     all_labels = data['label']
@@ -196,7 +196,7 @@ if __name__ == "__main__":
 
     # eval DSARNN model
     # result_file = "./dsarnn_tf/eval/eval_dsarcnn_demo.npz"
-    result_file = "./dsarnn_tf/eval/eval_dsarcnn_retrain.npz"
+    result_file = "./dsarnn_tf/eval/eval_dsarcnn_retrain_new.npz"
     data = np.load(result_file)
     all_pred = data['pred']
     all_labels = data['label']
