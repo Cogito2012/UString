@@ -18,6 +18,8 @@ LOG="${LOG_DIR}/${PHASE}_`date +'%Y-%m-%d_%H-%M'`.log"
 exec &> >(tee -a "$LOG")
 echo Logging output to "$LOG"
 
+OUT_DIR=output_master/UString/$FEATURE
+
 # experiments on DAD dataset
 case ${PHASE} in
   train)
@@ -26,18 +28,20 @@ case ${PHASE} in
       --feature_name $FEATURE \
       --phase train \
       --base_lr 0.001 \
+      --uncertainty_ranking \
       --gpus $GPUS \
-      --output_dir ./output_dev/BayesGCRM/$FEATURE
+      --output_dir $OUT_DIR
     ;;
   test)
     CUDA_VISIBLE_DEVICES=$GPUS python BayesGCRNN_accident.py \
       --dataset $DATA \
       --feature_name $FEATURE \
       --phase test \
+      --uncertainty_ranking \
       --gpus $GPUS \
       --visualize \
-      --output_dir ./output_dev/BayesGCRM/$FEATURE \
-      --model_file ./output_dev/BayesGCRM/$FEATURE/$DATA/snapshot/final_model.pth
+      --output_dir $OUT_DIR \
+      --model_file $OUT_DIR/$DATA/snapshot/final_model.pth
     ;;
   *)
     echo "Invalid argument!"
@@ -46,3 +50,4 @@ case ${PHASE} in
 esac
   
 echo 'Done!'
+cp $LOG $OUT_DIR/$DATA/logs/
