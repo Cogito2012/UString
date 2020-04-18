@@ -119,6 +119,8 @@ class A3DDataset(Dataset):
         return data_files, data_labels
 
     def get_toa(self, clip_id):
+        # handle clip id like "uXXC8uQHCoc_000011_0" which should be "uXXC8uQHCoc_000011"
+        clip_id = clip_id if len(clip_id.split('_')[-1]) > 1 else clip_id[:-2]
         label_file = os.path.join(self.data_path, 'frame_labels', clip_id + '.txt')
         assert os.path.exists(label_file)
         f = open(label_file, 'r')
@@ -164,6 +166,7 @@ class A3DDataset(Dataset):
             toa = torch.Tensor(toa).to(self.device)
 
         if self.vis:
+            file_id = file_id if len(file_id.split('_')[-1]) > 1 else file_id[:-2]
             video_path = os.path.join(self.data_path, 'video_frames', file_id, 'images')
             assert os.path.exists(video_path)
             return features, label_onehot, graph_edges, edge_weights, toa, detections, video_path
