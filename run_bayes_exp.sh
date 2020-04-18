@@ -48,6 +48,4 @@ case ${PHASE} in
     exit
     ;;
 esac
-  
-echo 'Done!'
-cp $LOG $OUT_DIR/$DATA/logs/
+
