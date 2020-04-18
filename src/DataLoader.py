@@ -166,10 +166,10 @@ class A3DDataset(Dataset):
             toa = torch.Tensor(toa).to(self.device)
 
         if self.vis:
-            file_id = file_id if len(file_id.split('_')[-1]) > 1 else file_id[:-2]
-            video_path = os.path.join(self.data_path, 'video_frames', file_id, 'images')
-            assert os.path.exists(video_path), video_path
-            return features, label_onehot, graph_edges, edge_weights, toa, detections, video_path
+            # file_id = file_id if len(file_id.split('_')[-1]) > 1 else file_id[:-2]
+            # video_path = os.path.join(self.data_path, 'video_frames', file_id, 'images')
+            # assert os.path.exists(video_path), video_path
+            return features, label_onehot, graph_edges, edge_weights, toa, detections, file_id
         else:
             return features, label_onehot, graph_edges, edge_weights, toa
 
