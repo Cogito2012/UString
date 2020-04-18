@@ -1,6 +1,7 @@
 import numpy as np
 import matplotlib.pyplot as plt
 import os
+from scipy.interpolate import make_interp_spline
 
 def evaluation(all_pred, all_labels, time_of_accidents, fps=20.0):
     """
