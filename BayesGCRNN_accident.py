@@ -252,6 +252,10 @@ def train_eval():
         from src.DataLoader import A3DDataset
         train_data = A3DDataset(data_path, p.feature_name, 'train', toTensor=True, device=device)
         test_data = A3DDataset(data_path, p.feature_name, 'test', toTensor=True, device=device)
+    elif p.dataset == 'crash':
+        from src.DataLoader import CrashDataset
+        train_data = CrashDataset(data_path, p.feature_name, 'train', toTensor=True, device=device)
+        test_data = CrashDataset(data_path, p.feature_name, 'test', toTensor=True, device=device)
     else:
         raise NotImplementedError
     traindata_loader = DataLoader(dataset=train_data, batch_size=p.batch_size, shuffle=True, drop_last=True)
@@ -373,6 +377,9 @@ def test_eval():
     elif p.dataset == 'a3d':
         from src.DataLoader import A3DDataset
         test_data = A3DDataset(data_path, p.feature_name, 'test', toTensor=True, device=device, vis=True)
+    elif p.dataset == 'crash':
+        from src.DataLoader import CrashDataset
+        test_data = CrashDataset(data_path, p.feature_name, 'test', toTensor=True, device=device, vis=True)
     else:
         raise NotImplementedError
     testdata_loader = DataLoader(dataset=test_data, batch_size=p.batch_size, shuffle=False, drop_last=True)
@@ -431,12 +438,12 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--data_path', type=str, default='./data',
                         help='The relative path of dataset.')
-    parser.add_argument('--dataset', type=str, default='dad', choices=['a3d', 'dad'],
+    parser.add_argument('--dataset', type=str, default='dad', choices=['a3d', 'dad', 'crash'],
                         help='The name of dataset. Default: dad')
     parser.add_argument('--base_lr', type=float, default=1e-3,
                         help='The base learning rate. Default: 1e-3')
     parser.add_argument('--epoch', type=int, default=30,
-                        help='The number of training epoches. Default: 200')
+                        help='The number of training epoches. Default: 30')
     parser.add_argument('--batch_size', type=int, default=10,
                         help='The batch size in training process. Default: 10')
     parser.add_argument('--num_rnn', type=int, default=1,
