@@ -143,7 +143,7 @@ def get_video_frames(video_file, n_frames=100):
         video_data.append(frame)
         ret, frame = cap.read()
         counter += 1
-    assert len(video_data) >= n_frames
+    assert len(video_data) >= n_frames, video_file
     video_data = video_data[:n_frames]
     return video_data
 
