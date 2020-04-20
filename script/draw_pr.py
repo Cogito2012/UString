@@ -168,14 +168,14 @@ def old_evaluation(all_pred, all_labels, total_time = 90, length = None, speedup
 
 if __name__ == "__main__":
     result_dir = './output_dev/'
-    # eval our own model (GCN-RNN)
-    result_file = os.path.join(result_dir, "../backup/gcrnn_auxloss_0331/vgg16/dad/test/pred_res.npz")
-    data = np.load(result_file)
-    all_pred = data['pred']
-    all_labels = data['label']
-    # toas = data['toas']
-    toas = [90] * all_labels.shape[0]
-    precision, recall, tta = evaluation(all_pred, all_labels, toas, fps=20.0)
+    # # eval our own model (GCN-RNN)
+    # result_file = os.path.join(result_dir, "../backup/gcrnn_auxloss_0331/vgg16/dad/test/pred_res.npz")
+    # data = np.load(result_file)
+    # all_pred = data['pred']
+    # all_labels = data['label']
+    # # toas = data['toas']
+    # toas = [90] * all_labels.shape[0]
+    # precision, recall, tta = evaluation(all_pred, all_labels, toas, fps=20.0)
 
     # eval our own model (Bayes GCN-RNN)
     result_file = os.path.join(result_dir, "bayes_gcrnn_0402/vgg16/dad/test-final/pred_res.npz")
@@ -196,7 +196,7 @@ if __name__ == "__main__":
 
     # eval DSARNN model
     # result_file = "./dsarnn_tf/eval/eval_dsarcnn_demo.npz"
-    result_file = "./dsarnn_tf/eval-bk/eval_dsarcnn_retrain_new.npz"
+    result_file = "./dsarnn_tf/eval/eval_dsarcnn_retrain_15.npz"
     data = np.load(result_file)
     all_pred = data['pred']
     all_labels = data['label']
@@ -208,7 +208,7 @@ if __name__ == "__main__":
     fontsize = 30
     plt.figure(figsize=(10,5))
     plt.plot(recall_dsarnn, precision_dsarnn, 'b-')
-    plt.plot(recall, precision, 'k-')
+    # plt.plot(recall, precision, 'k-')
     plt.plot(recall_bayes, precision_bayes, 'r-')
     # plt.plot(recall_bayesUr, precision_bayesUr, 'r--')
     plt.axvline(x=0.8, ymax=1.0, linewidth=2.0, color='k', linestyle='--')
@@ -219,14 +219,14 @@ if __name__ == "__main__":
     plt.xticks(fontsize=fontsize)
     plt.yticks(fontsize=fontsize)
     plt.title('Precision Recall Curves', fontsize=fontsize)
-    plt.legend(['DSA-RNN', 'Ours (String)', 'Ours (UString)'], fontsize=fontsize)
+    plt.legend(['DSA-RNN', 'Ours (UString)'], fontsize=fontsize)
     plt.grid(True)
     plt.tight_layout()
     plt.savefig(os.path.join(result_dir, 'PRCurve.png'))
 
     plt.figure(figsize=(10,5))
     plt.plot(recall_dsarnn, tta_dsarnn*5, 'b-')
-    plt.plot(recall, tta*5, 'k-')
+    # plt.plot(recall, tta*5, 'k-')
     plt.plot(recall_bayes, tta_bayes*5, 'r-')
     # plt.plot(recall_bayesUr, tta_bayesUr*5, 'r--')
     plt.axvline(x=0.8, ymax=5.0, linewidth=2.0, color='k', linestyle='--')
@@ -237,7 +237,7 @@ if __name__ == "__main__":
     plt.xticks(fontsize=fontsize)
     plt.yticks(fontsize=fontsize)
     plt.title('Time-to-Accident Recall Curves', fontsize=fontsize)
-    plt.legend(['DSA-RNN', 'Ours (String)', 'Ours (UString)'], fontsize=fontsize)
+    plt.legend(['DSA-RNN', 'Ours (UString)'], fontsize=fontsize)
     plt.grid(True)
     plt.tight_layout()
     plt.savefig(os.path.join(result_dir, 'TRCurve.png'))
