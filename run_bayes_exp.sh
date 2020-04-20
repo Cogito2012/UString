@@ -6,7 +6,7 @@ source activate py37
 PHASE=$1
 GPUS=$2
 DATA=$3
-FEATURE=$4
+BATCH_SIZE=$4
 
 LOG_DIR="./logs"
 if [ ! -d $LOG_DIR ]; then
@@ -18,16 +18,17 @@ LOG="${LOG_DIR}/${PHASE}_`date +'%Y-%m-%d_%H-%M'`.log"
 exec &> >(tee -a "$LOG")
 echo Logging output to "$LOG"
 
-OUT_DIR=output_master/UString/$FEATURE
+OUT_DIR=output_master/UString/vgg16
 
 # experiments on DAD dataset
 case ${PHASE} in
   train)
     CUDA_VISIBLE_DEVICES=$GPUS python BayesGCRNN_accident.py \
       --dataset $DATA \
-      --feature_name $FEATURE \
+      --feature_name vgg16 \
       --phase train \
-      --base_lr 0.001 \
+      --base_lr 0.0005 \
+      --batch_size $BATCH_SIZE \
       --uncertainty_ranking \
       --gpus $GPUS \
       --output_dir $OUT_DIR
@@ -35,9 +36,10 @@ case ${PHASE} in
   test)
     CUDA_VISIBLE_DEVICES=$GPUS python BayesGCRNN_accident.py \
       --dataset $DATA \
-      --feature_name $FEATURE \
+      --feature_name vgg16 \
       --phase test \
       --uncertainty_ranking \
+      --batch_size $BATCH_SIZE \
       --gpus $GPUS \
       --visualize \
       --output_dir $OUT_DIR \
