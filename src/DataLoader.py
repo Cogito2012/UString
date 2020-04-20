@@ -219,7 +219,7 @@ class CrashDataset(Dataset):
         annofile = os.path.join(data_path, 'videos', 'Crash-1500.txt')
         annoData = self.read_anno_file(annofile)
         for anno in annoData:
-            labels = anno['label']
+            labels = np.array(anno['label'], dtype=np.int)
             toa = np.where(labels == 1)[0][0]
             toa = min(max(1, toa), self.n_frames-1) 
             toa_dict[anno['vid']] = toa
@@ -244,17 +244,15 @@ class CrashDataset(Dataset):
     def __getitem__(self, index):
         data_file = os.path.join(self.data_path, self.feature + '_features', self.files_list[index])
         assert os.path.exists(data_file), "file not exists: %s"%(data_file)
-        data_file = os.path.join(self.data_path, self.phase, self.files_list[index])
-        assert os.path.exists(data_file)
         try:
             data = np.load(data_file)
             features = data['data']  # 50 x 20 x 4096
             labels = data['labels']  # 2
             detections = data['det']  # 50 x 19 x 6
-            vid = data['ID']
+            vid = str(data['ID'])
         except:
             raise IOError('Load data error! File: %s'%(data_file))
-        if label > 0:
+        if labels[1] > 0:
             toa = [self.toa_dict[vid]]
         else:
             toa = [self.n_frames + 1]
@@ -262,7 +260,7 @@ class CrashDataset(Dataset):
         graph_edges, edge_weights = generate_st_graph(detections)
 
         if self.toTensor:
-            features = torch.Tensor(features).to(self.device)         #  100 x 20 x 4096
+            features = torch.Tensor(features).to(self.device)         #  50 x 20 x 4096
             labels = torch.Tensor(labels).to(self.device)
             graph_edges = torch.Tensor(graph_edges).long().to(self.device)
             edge_weights = torch.Tensor(edge_weights).to(self.device)
