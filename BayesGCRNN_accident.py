@@ -17,6 +17,7 @@ import ipdb
 import matplotlib.pyplot as plt
 from tensorboardX import SummaryWriter
 from tqdm import tqdm
+from sklearn.metrics import average_precision_score
 
 seed = 123
 np.random.seed(seed)
@@ -425,6 +426,9 @@ def test_eval():
             all_pred, all_labels, all_toas, all_uncertains, vis_data = \
                 all_results['pred'], all_results['label'], all_results['toas'], all_results['uncertainties'], all_results['vis_data']
         # evaluate results
+        all_vid_scores = [max(pred[:90]) for pred in all_pred]
+        AP_video = average_precision_score(all_labels, all_vid_scores)
+        print("video-level AP=%.5f"%(AP_video))
         AP, mTTA, TTA_R80 = evaluation(all_pred, all_labels, all_toas, fps=test_data.fps)
         # evaluate uncertainties
         mUncertains = np.mean(all_uncertains, axis=(0, 1))
