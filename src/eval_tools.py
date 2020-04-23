@@ -104,8 +104,42 @@ def print_results(AP_all, mTTA_all, TTA_R80_all, result_dir):
     f.close()
     
 
-def vis_results(vis_data, batch_size, vis_dir):
-    for results in vis_data:
+# def vis_results(vis_data, batch_size, vis_dir):
+#     for results in vis_data:
+#         pred_frames = results['pred_frames']
+#         labels = results['label']
+#         toa = results['toa']
+#         video_ids = results['video_ids']
+#         detections = results['detections']
+#         uncertainties = results['pred_uncertain']
+#         for n in range(batch_size):
+#             if labels[n] == 1:
+#                 pred_mean = pred_frames[n, :]  # (90,)
+#                 pred_std_alea = 1.0 * np.sqrt(uncertainties[n, :, 0])
+#                 pred_std_epis = 1.0 * np.sqrt(uncertainties[n, :, 1])
+#                 # plot the probability predictions
+#                 fig, ax = plt.subplots(1, figsize=(14, 5))
+#                 ax.fill_between(range(1, len(pred_mean)+1), pred_mean - pred_std_alea, pred_mean + pred_std_alea, facecolor='wheat', alpha=0.5)
+#                 ax.fill_between(range(1, len(pred_mean)+1), pred_mean - pred_std_epis, pred_mean + pred_std_epis, facecolor='yellow', alpha=0.5)
+#                 plt.plot(range(1, len(pred_mean)+1), pred_mean, linewidth=3.0)
+#                 plt.axvline(x=toa[n], ymax=1.0, linewidth=3.0, color='r', linestyle='--')
+#                 fontsize = 18
+#                 plt.ylim(0, 1)
+#                 plt.xlim(1, 100)
+#                 plt.ylabel('Probability', fontsize=fontsize)
+#                 plt.xlabel('Frame (FPS=20)', fontsize=fontsize)
+#                 plt.xticks(fontsize=fontsize)
+#                 plt.yticks(fontsize=fontsize)
+#                 plt.grid(True)
+#                 plt.tight_layout()
+#                 plt.savefig(os.path.join(vis_dir, video_ids[n] + '.png'))
+#                 plt.close()
+
+
+def vis_results(vis_data, batch_size, vis_dir, smooth=False, vis_batchnum=2):
+    assert vis_batchnum <= len(vis_data)
+    for b in range(vis_batchnum):
+        results = vis_data[b]
         pred_frames = results['pred_frames']
         labels = results['label']
         toa = results['toa']
@@ -113,82 +147,52 @@ def vis_results(vis_data, batch_size, vis_dir):
         detections = results['detections']
         uncertainties = results['pred_uncertain']
         for n in range(batch_size):
-            if labels[n] == 1:
-                pred_mean = pred_frames[n, :]  # (90,)
-                pred_std_alea = 1.0 * np.sqrt(uncertainties[n, :, 0])
-                pred_std_epis = 1.0 * np.sqrt(uncertainties[n, :, 1])
-                # plot the probability predictions
-                fig, ax = plt.subplots(1, figsize=(14, 5))
-                ax.fill_between(range(1, len(pred_mean)+1), pred_mean - pred_std_alea, pred_mean + pred_std_alea, facecolor='wheat', alpha=0.5)
-                ax.fill_between(range(1, len(pred_mean)+1), pred_mean - pred_std_epis, pred_mean + pred_std_epis, facecolor='yellow', alpha=0.5)
-                plt.plot(range(1, len(pred_mean)+1), pred_mean, linewidth=3.0)
+            pred_mean = pred_frames[n, :]  # (90,)
+            pred_std_alea = 1.0 * np.sqrt(uncertainties[n, :, 0])
+            pred_std_epis = 1.0 * np.sqrt(uncertainties[n, :, 1])
+            xvals = range(len(pred_mean))
+            if smooth:
+                # sampling
+                xvals = np.linspace(0,len(pred_mean)-1,20)
+                pred_mean_reduce = pred_mean[xvals.astype(np.int)]
+                pred_std_alea_reduce = pred_std_alea[xvals.astype(np.int)]
+                pred_std_epis_reduce = pred_std_epis[xvals.astype(np.int)]
+                # smoothing
+                xvals_new = np.linspace(1,len(pred_mean)+1,80)
+                pred_mean = make_interp_spline(xvals, pred_mean_reduce)(xvals_new)
+                pred_std_alea = make_interp_spline(xvals, pred_std_alea_reduce)(xvals_new)
+                pred_std_epis = make_interp_spline(xvals, pred_std_epis_reduce)(xvals_new)
+                pred_mean[pred_mean >= 1.0] = 1.0-1e-3
+                xvals = xvals_new
+                # fix invalid values
+                indices = np.where(xvals <= toa[n])[0]
+                xvals = xvals[indices]
+                pred_mean = pred_mean[indices]
+                pred_std_alea = pred_std_alea[indices]
+                pred_std_epis = pred_std_epis[indices]
+            # plot the probability predictions
+            fig, ax = plt.subplots(1, figsize=(24, 3.5))
+            ax.fill_between(xvals, pred_mean - pred_std_alea, pred_mean + pred_std_alea, facecolor='wheat', alpha=0.5)
+            ax.fill_between(xvals, pred_mean - pred_std_epis, pred_mean + pred_std_epis, facecolor='yellow', alpha=0.5)
+            plt.plot(xvals, pred_mean, linewidth=3.0)
+            if toa[n] <= pred_frames.shape[1]:
                 plt.axvline(x=toa[n], ymax=1.0, linewidth=3.0, color='r', linestyle='--')
-                fontsize = 18
-                plt.ylim(0, 1)
-                plt.xlim(1, 100)
-                plt.ylabel('Probability', fontsize=fontsize)
-                plt.xlabel('Frame (FPS=20)', fontsize=fontsize)
-                plt.xticks(fontsize=fontsize)
-                plt.yticks(fontsize=fontsize)
-                plt.grid(True)
-                plt.tight_layout()
-                plt.savefig(os.path.join(vis_dir, video_ids[n] + '.png'))
-                plt.close()
-
-
-def vis_results(vis_data, batch_size, vis_dir, smooth=True):
-    for results in vis_data:
-        pred_frames = results['pred_frames']
-        labels = results['label']
-        toa = results['toa']
-        video_ids = results['video_ids']
-        detections = results['detections']
-        uncertainties = results['pred_uncertain']
-        for n in range(batch_size):
-            if labels[n] == 1:
-                pred_mean = pred_frames[n, :]  # (90,)
-                pred_std_alea = 1.0 * np.sqrt(uncertainties[n, :, 0])
-                pred_std_epis = 1.0 * np.sqrt(uncertainties[n, :, 1])
-                if smooth:
-                    # sampling
-                    xvals = np.linspace(0,len(pred_mean)-1,20)
-                    pred_mean_reduce = pred_mean[xvals.astype(np.int)]
-                    pred_std_alea_reduce = pred_std_alea[xvals.astype(np.int)]
-                    pred_std_epis_reduce = pred_std_epis[xvals.astype(np.int)]
-                    # smoothing
-                    xvals_new = np.linspace(1,len(pred_mean)+1,80)
-                    pred_mean = make_interp_spline(xvals, pred_mean_reduce)(xvals_new)
-                    pred_std_alea = make_interp_spline(xvals, pred_std_alea_reduce)(xvals_new)
-                    pred_std_epis = make_interp_spline(xvals, pred_std_epis_reduce)(xvals_new)
-                    pred_mean[pred_mean > 1.0] = 1.0
-                    xvals = xvals_new
-                    # fix invalid values
-                    indices = np.where(xvals <= 90)[0]
-                    xvals = xvals[indices]
-                    pred_mean = pred_mean[indices]
-                    pred_std_alea = pred_std_alea[indices]
-                    pred_std_epis = pred_std_epis[indices]
-                # plot the probability predictions
-                fig, ax = plt.subplots(1, figsize=(24, 3.5))
-                ax.fill_between(xvals, pred_mean - pred_std_alea, pred_mean + pred_std_alea, facecolor='wheat', alpha=0.5)
-                ax.fill_between(xvals, pred_mean - pred_std_epis, pred_mean + pred_std_epis, facecolor='yellow', alpha=0.5)
-                plt.plot(xvals, pred_mean, linewidth=3.0)
-                plt.axvline(x=toa[n], ymax=1.0, linewidth=3.0, color='r', linestyle='--')
-                # plt.axhline(y=0.7, xmin=0, xmax=0.9, linewidth=3.0, color='g', linestyle='--')
-                # draw accident region
-                x = [toa[n], 100]
-                y1 = [0, 0]
-                y2 = [1, 1]
-                ax.fill_between(x, y1, y2, color='C1', alpha=0.3, interpolate=True)
-                fontsize = 25
-                plt.ylim(0, 1)
-                plt.xlim(1, 100)
-                plt.ylabel('Probability', fontsize=fontsize)
-                plt.xlabel('Frame (FPS=20)', fontsize=fontsize)
-                plt.xticks(range(0, 101, 10), fontsize=fontsize)
-                plt.yticks(fontsize=fontsize)
-                plt.grid(True)
-                plt.tight_layout()
-                plt.savefig(os.path.join(vis_dir, video_ids[n] + '.png'))
-                plt.close()
-                # plt.show()
+            # plt.axhline(y=0.7, xmin=0, xmax=0.9, linewidth=3.0, color='g', linestyle='--')
+            # draw accident region
+            x = [toa[n], pred_frames.shape[1]]
+            y1 = [0, 0]
+            y2 = [1, 1]
+            ax.fill_between(x, y1, y2, color='C1', alpha=0.3, interpolate=True)
+            fontsize = 25
+            plt.ylim(0, 1.1)
+            plt.xlim(1, pred_frames.shape[1])
+            plt.ylabel('Probability', fontsize=fontsize)
+            plt.xlabel('Frame (FPS=20)', fontsize=fontsize)
+            plt.xticks(range(0, pred_frames.shape[1], 10), fontsize=fontsize)
+            plt.yticks(fontsize=fontsize)
+            plt.grid(True)
+            plt.tight_layout()
+            tag = 'pos' if labels[n] > 0 else 'neg'
+            plt.savefig(os.path.join(vis_dir, video_ids[n] + '_' + tag + '.png'))
+            plt.close()
+            # plt.show()
