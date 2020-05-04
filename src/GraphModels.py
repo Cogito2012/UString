@@ -286,12 +286,15 @@ class SelfAttAggregate(torch.nn.Module):
         import math
         torch.nn.init.kaiming_normal_(self.weight, a=math.sqrt(5))
 
-    def forward(self, hiddens):
+    def forward(self, hiddens, avgsum='sum'):
         """
         hiddens: (10, 19, 256, 100)
         """
         maxpool = torch.max(hiddens, dim=1)[0]  # (10, 256, 100)
-        avgpool = torch.mean(hiddens, dim=1)    # (10, 256, 100)
+        if avgsum=='sum':
+            avgpool = torch.sum(hiddens, dim=1)
+        else:
+            avgpool = torch.mean(hiddens, dim=1)    # (10, 256, 100)
         agg_spatial = torch.cat((avgpool, maxpool), dim=1)  # (10, 512, 100)
 
         # soft-attention
@@ -452,7 +455,7 @@ class GCRNN(nn.Module):
 
 
 class BayesGCRNN(nn.Module):
-    def __init__(self, x_dim, h_dim, z_dim, n_layers=1, n_obj=19, n_frames=100, fps=20.0, with_saa=True, uncertain_ranking=False):
+    def __init__(self, x_dim, h_dim, z_dim, n_layers=1, n_obj=19, n_frames=100, fps=20.0, with_saa=True, uncertain_ranking=False, use_mask=False):
         super(BayesGCRNN, self).__init__()
 
         self.x_dim = x_dim
@@ -464,6 +467,7 @@ class BayesGCRNN(nn.Module):
         self.fps = fps
         self.with_saa = with_saa
         self.uncertain_ranking = uncertain_ranking
+        self.use_mask = use_mask
 
         self.phi_x = nn.Sequential(nn.Linear(x_dim, h_dim), nn.ReLU())
 
@@ -507,15 +511,23 @@ class BayesGCRNN(nn.Module):
             h = Variable(hidden_in)
         h = h.to(x.device)
 
+        if self.use_mask:
+            temp = torch.sum(x[:, :, 1:self.n_obj+1, :], -1)  # 10 x 100 x 19
+            mask = (~torch.eq(temp, torch.zeros_like(temp))).to(torch.float32)
         for t in range(x.size(1)):
             # reduce the dim of node feature (FC layer)
             x_t = self.phi_x(x[:, t])  # 10 x 20 x 256
-            img_embed = x_t[:, 0, :].unsqueeze(1).repeat(1, self.n_obj, 1).contiguous()  # 10 x 19 x 256
-            x_t = torch.cat([x_t[:, 1:, :], img_embed], dim=-1)  # 10 x 19 x 512
+            img_embed = x_t[:, 0, :].unsqueeze(1).repeat(1, self.n_obj, 1).contiguous()  # 10 x 1 x 256
+            obj_embed = x_t[:, 1:, :]  # 10 x 19 x 256
+            if self.use_mask:
+                obj_embed = mask[:, t].unsqueeze(1).expand_as(obj_embed) * obj_embed
+            x_t = torch.cat([obj_embed, img_embed], dim=-1)  # 10 x 19 x 512
 
             # GCN encoder
             enc = self.enc_gcn1(x_t, graph[:, t], edge_weight=edge_weights[:, t])  # 10 x 19 x 256 (512-->256)
             z_t = self.enc_gcn2(torch.cat([enc, h[-1]], -1), graph[:, t], edge_weight=edge_weights[:, t])  # 10 x 19 x 128 (512-->128)
+            if self.use_mask:
+                z_t = mask[:, t].unsqueeze(1).expand_as(z_t) * z_t
 
             # BNN decoder
             embed = z_t.view(z_t.size(0), -1)  # 10 x (19 x 128)
@@ -524,6 +536,8 @@ class BayesGCRNN(nn.Module):
 
             # recurrence
             h = self.rnn(torch.cat([x_t, z_t], -1), graph[:, t], h, edge_weight=edge_weights[:, t])  # rnn latent (640)-->256
+            if self.use_mask:
+                h[-1] = mask[:, t].unsqueeze(1).expand_as(h[-1]) * h[-1]
 
             # computing losses
             L1 = output_dict['log_posterior'] / nbatch
@@ -534,7 +548,8 @@ class BayesGCRNN(nn.Module):
             losses['cross_entropy'] += L3
             # uncertainty ranking loss
             if self.uncertain_ranking:
-                L5, Ut = self._uncertainty_ranking(output_dict, Ut)
+                avgsum = 'sum' if self.use_mask else 'avg'
+                L5, Ut = self._uncertainty_ranking(output_dict, Ut, avgsum)
                 losses['ranking'] += L5
 
             all_outputs.append(output_dict)

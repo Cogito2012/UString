@@ -265,7 +265,7 @@ def train_eval():
     # building model
     model = BayesGCRNN(train_data.dim_feature, p.hidden_dim, p.latent_dim, 
                        n_layers=p.num_rnn, n_obj=train_data.n_obj, n_frames=train_data.n_frames, fps=train_data.fps, 
-                       with_saa=(not p.remove_saa), uncertain_ranking=p.uncertainty_ranking)
+                       with_saa=(not p.remove_saa), uncertain_ranking=p.uncertainty_ranking, use_mask=p.use_mask)
 
     # optimizer
     optimizer = torch.optim.Adam(model.parameters(), lr=p.base_lr)
@@ -390,7 +390,7 @@ def test_eval():
     # building model
     model = BayesGCRNN(test_data.dim_feature, p.hidden_dim, p.latent_dim, 
                        n_layers=p.num_rnn, n_obj=test_data.n_obj, n_frames=test_data.n_frames, fps=test_data.fps, 
-                       with_saa=(not p.remove_saa), uncertain_ranking=p.uncertainty_ranking)
+                       with_saa=(not p.remove_saa), uncertain_ranking=p.uncertainty_ranking, use_mask=p.use_mask)
 
     # start to evaluate
     if p.evaluate_all:
@@ -460,6 +460,8 @@ if __name__ == '__main__':
                         help='The dimension of hidden states in RNN. Default: 256')
     parser.add_argument('--latent_dim', type=int, default=256,
                         help='The dimension of latent space. Default: 256')
+    parser.add_argument('--use_mask', action='store_true',
+                        help='Apply masking on input features. Default: False')
     parser.add_argument('--remove_saa', action='store_true',
                         help='Use self-attention aggregation layer. Default: False')
     parser.add_argument('--uncertainty_ranking', action='store_true',
