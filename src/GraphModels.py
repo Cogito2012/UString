@@ -520,14 +520,14 @@ class BayesGCRNN(nn.Module):
             img_embed = x_t[:, 0, :].unsqueeze(1).repeat(1, self.n_obj, 1).contiguous()  # 10 x 1 x 256
             obj_embed = x_t[:, 1:, :]  # 10 x 19 x 256
             if self.use_mask:
-                obj_embed = mask[:, t].unsqueeze(1).expand_as(obj_embed) * obj_embed
+                obj_embed = mask[:, t].unsqueeze(2).expand_as(obj_embed) * obj_embed
             x_t = torch.cat([obj_embed, img_embed], dim=-1)  # 10 x 19 x 512
 
             # GCN encoder
             enc = self.enc_gcn1(x_t, graph[:, t], edge_weight=edge_weights[:, t])  # 10 x 19 x 256 (512-->256)
             z_t = self.enc_gcn2(torch.cat([enc, h[-1]], -1), graph[:, t], edge_weight=edge_weights[:, t])  # 10 x 19 x 128 (512-->128)
             if self.use_mask:
-                z_t = mask[:, t].unsqueeze(1).expand_as(z_t) * z_t
+                z_t = mask[:, t].unsqueeze(2).expand_as(z_t) * z_t
 
             # BNN decoder
             embed = z_t.view(z_t.size(0), -1)  # 10 x (19 x 128)
@@ -537,7 +537,7 @@ class BayesGCRNN(nn.Module):
             # recurrence
             h = self.rnn(torch.cat([x_t, z_t], -1), graph[:, t], h, edge_weight=edge_weights[:, t])  # rnn latent (640)-->256
             if self.use_mask:
-                h[-1] = mask[:, t].unsqueeze(1).expand_as(h[-1]) * h[-1]
+                h[-1] = mask[:, t].unsqueeze(2).expand_as(h[-1]) * h[-1]
 
             # computing losses
             L1 = output_dict['log_posterior'] / nbatch
@@ -548,8 +548,7 @@ class BayesGCRNN(nn.Module):
             losses['cross_entropy'] += L3
             # uncertainty ranking loss
             if self.uncertain_ranking:
-                avgsum = 'sum' if self.use_mask else 'avg'
-                L5, Ut = self._uncertainty_ranking(output_dict, Ut, avgsum)
+                L5, Ut = self._uncertainty_ranking(output_dict, Ut)
                 losses['ranking'] += L5
 
             all_outputs.append(output_dict)
@@ -557,7 +556,8 @@ class BayesGCRNN(nn.Module):
 
         if self.with_saa:
             # soft attention to aggregate hidden states of all frames
-            embed_video = self.self_aggregation(torch.stack(all_hidden, dim=-1))
+            avgsum = 'sum' if self.use_mask else 'avg'
+            embed_video = self.self_aggregation(torch.stack(all_hidden, dim=-1), avgsum)
             dec = self.predictor_aux(embed_video)
             L4 = torch.mean(self.ce_loss(dec, y[:, 1].to(torch.long)))
             losses['auxloss'] = L4

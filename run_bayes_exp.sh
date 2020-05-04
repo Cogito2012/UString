@@ -29,6 +29,7 @@ case ${PHASE} in
       --phase train \
       --base_lr 0.0005 \
       --batch_size $BATCH_SIZE \
+      --use_mask \
       --uncertainty_ranking \
       --gpus $GPUS \
       --output_dir $OUT_DIR
@@ -40,6 +41,7 @@ case ${PHASE} in
       --phase test \
       --uncertainty_ranking \
       --batch_size $BATCH_SIZE \
+      --use_mask \
       --gpus $GPUS \
       --visualize \
       --output_dir $OUT_DIR \
