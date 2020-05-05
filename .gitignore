@@ -11,3 +11,5 @@ backup
 dsarnn_tf
 runs
 src/__pycache__
+script/savedlogs
+script/res
