@@ -271,15 +271,15 @@ def train_eval():
     optimizer = torch.optim.Adam(model.parameters(), lr=p.base_lr)
     scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', factor=0.5, patience=5)
 
-    # resume training 
-    start_epoch = -1
-    if p.resume:
-        model, optimizer, start_epoch = load_checkpoint(model, optimizer=optimizer, filename=p.model_file)
-
     if len(gpu_ids) > 1:
         model = torch.nn.DataParallel(model)
     model = model.to(device=device)
     model.train() # set the model into training status
+
+    # resume training 
+    start_epoch = -1
+    if p.resume:
+        model, optimizer, start_epoch = load_checkpoint(model, optimizer=optimizer, filename=p.model_file)
 
     # write histograms
     write_weight_histograms(logger, model, 0)
