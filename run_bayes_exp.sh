@@ -44,6 +44,7 @@ case ${PHASE} in
       --use_mask \
       --gpus $GPUS \
       --visualize \
+      --evaluate_all \
       --output_dir $OUT_DIR \
       --model_file $OUT_DIR/$DATA/snapshot/final_model.pth
     ;;

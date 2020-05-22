@@ -396,7 +396,7 @@ def test_eval():
     if p.evaluate_all:
         model_dir = os.path.join(p.output_dir, p.dataset, 'snapshot')
         assert os.path.exists(model_dir)
-        AP_all, mTTA_all, TTA_R80_all = [], [], []
+        Epochs, APvid_all, AP_all, mTTA_all, TTA_R80_all, Unc_all = [], [], [], [], [], []
         modelfiles = sorted(os.listdir(model_dir))
         for filename in modelfiles:
             epoch_str = filename.split("_")[-1].split(".pth")[0]
@@ -407,11 +407,18 @@ def test_eval():
             all_pred, all_labels, all_toas, all_uncertains, _ = test_all_vis(testdata_loader, model, vis=False, device=device)
             # evaluate results
             AP, mTTA, TTA_R80 = evaluation(all_pred, all_labels, all_toas, fps=test_data.fps)
+            mUncertains = np.mean(all_uncertains, axis=(0, 1))
+            all_vid_scores = [max(pred[:int(toa)]) for toa, pred in zip(all_toas, all_pred)]
+            AP_video = average_precision_score(all_labels, all_vid_scores)
+            APvid_all.append(AP_video)
+            # save
+            Epochs.append(epoch_str)
             AP_all.append(AP)
             mTTA_all.append(mTTA)
             TTA_R80_all.append(TTA_R80)
+            Unc_all.append(mUncertains)
         # print results to file
-        print_results(AP_all, mTTA_all, TTA_R80_all, result_dir)
+        print_results(Epochs, APvid_all, AP_all, mTTA_all, TTA_R80_all, Unc_all, result_dir)
     else:
         result_file = os.path.join(vis_dir, "..", "pred_res.npz")
         if not os.path.exists(result_file):

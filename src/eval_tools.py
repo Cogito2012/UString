@@ -96,11 +96,11 @@ def evaluation(all_pred, all_labels, time_of_accidents, fps=20.0):
     return AP, mTTA, TTA_R80
 
 
-def print_results(AP_all, mTTA_all, TTA_R80_all, result_dir):
+def print_results(Epochs, APvid_all, AP_all, mTTA_all, TTA_R80_all, Unc_all, result_dir):
     result_file = os.path.join(result_dir, 'eval_all.txt')
     with open(result_file, 'w') as f:
-        for AP, mTTA, TTA_R80 in zip(AP_all, mTTA_all, TTA_R80_all):
-            f.writelines('{:.3f} {:.3f} {:.3f}\n'.format(AP, mTTA, TTA_R80))
+        for e, APvid, AP, mTTA, TTA_R80, Un in zip(Epochs, APvid_all, AP_all, mTTA_all, TTA_R80_all, Unc_all):
+            f.writelines('Epoch: %s,'%(e) + ' APvid={:.3f}, AP={:.3f}, mTTA={:.3f}, TTA_R80={:.3f}, mAU={:.5f}, mEU={:.5f}\n'.format(APvid, AP, mTTA, TTA_R80, Un[0], Un[1]))
     f.close()
     
 
