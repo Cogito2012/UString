@@ -13,3 +13,6 @@ runs
 src/__pycache__
 script/savedlogs
 script/res
+*.mp4
+lib
+demo
