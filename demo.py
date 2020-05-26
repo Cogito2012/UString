@@ -265,69 +265,41 @@ def get_video_frames(video_file, n_frames=50):
     return video_data
 
 
-def smooth_results(pred_score, std_alea, std_epis):
+def preprocess_results(pred_score, aleatoric, epistemic, cumsum=False):
     from scipy.interpolate import make_interp_spline
+    std_alea = 1.0 * np.sqrt(aleatoric)
+    std_epis = 1.0 * np.sqrt(epistemic)
     # sampling
-    xvals = np.linspace(0,len(pred_score)-1,50)
+    xvals = np.linspace(0,len(pred_score)-1,10)
     pred_mean_reduce = pred_score[xvals.astype(np.int)]
     pred_std_alea_reduce = std_alea[xvals.astype(np.int)]
     pred_std_epis_reduce = std_epis[xvals.astype(np.int)]
     # smoothing
-    xvals_new = np.linspace(1,len(pred_score)+1,50)
+    xvals_new = np.linspace(1,len(pred_score)+1, p.n_frames)
     pred_score = make_interp_spline(xvals, pred_mean_reduce)(xvals_new)
     std_alea = make_interp_spline(xvals, pred_std_alea_reduce)(xvals_new)
     std_epis = make_interp_spline(xvals, pred_std_epis_reduce)(xvals_new)
     pred_score[pred_score >= 1.0] = 1.0-1e-3
-    xvals = xvals_new
-    # fix invalid values
-    indices = np.where(xvals <= 50)[0]
-    xvals = xvals[indices]
-    pred_score = pred_score[indices]
-    std_alea = std_alea[indices]
-    std_epis = std_epis[indices]
+    xvals = np.copy(xvals_new)
+    # copy the first value into x=0
+    xvals = np.insert(xvals_new, 0, 0)
+    pred_score = np.insert(pred_score, 0, pred_score[0])
+    std_alea = np.insert(std_alea, 0, std_alea[0])
+    std_epis = np.insert(std_epis, 0, std_epis[0])
+    # take cummulative sum of results
+    if cumsum:
+        pred_score = np.cumsum(pred_score)
+        pred_score = pred_score / np.max(pred_score)
     return xvals, pred_score, std_alea, std_epis
 
 
-def draw_curve_origin(pred_score, aleatoric, epistemic, smooth=False):
-    std_alea = 1.0 * np.sqrt(aleatoric)
-    std_epis = 1.0 * np.sqrt(epistemic)
-    xvals = range(len(pred_score))
-    if smooth and len(pred_score) > 4:
-        xvals, pred_score, std_alea, std_epis = smooth_results(pred_score, std_alea, std_epis)
-
-    # fig, ax = plt.subplots(1, figsize=(24, 3.5))
+def draw_curve(xvals, pred_score, std_alea, std_epis):
     ax.fill_between(xvals, pred_score - std_alea, pred_score + std_alea, facecolor='wheat', alpha=0.5)
     ax.fill_between(xvals, pred_score - std_epis, pred_score + std_epis, facecolor='yellow', alpha=0.5)
     plt.plot(xvals, pred_score, linewidth=3.0)
-    fontsize = 25
-    plt.ylim(0, 1.1)
-    plt.xlim(1, pred_score.shape[0]+1)
-    plt.ylabel('Probability', fontsize=fontsize)
-    plt.xlabel('Frame (FPS=20)', fontsize=fontsize)
-    plt.xticks(range(0, pred_score.shape[0]+3, 2), fontsize=fontsize)
-    plt.yticks(fontsize=fontsize)
+    plt.axhline(y=0.5, xmin=0, xmax=max(xvals)/(p.n_frames + 2), linewidth=3.0, color='g', linestyle='--')
     # plt.grid(True)
     plt.tight_layout()
-
-
-def draw_curve(plt, ax, xvals, pred_score, std_alea, std_epis):
-    
-    # plot the probability predictions
-    # fig, ax = plt.subplots(1, figsize=(24, 3.5))
-    ax.fill_between(xvals, pred_score - std_alea, pred_score + std_alea, facecolor='wheat', alpha=0.5)
-    ax.fill_between(xvals, pred_score - std_epis, pred_score + std_epis, facecolor='yellow', alpha=0.5)
-    plt.plot(xvals, pred_score, linewidth=3.0)
-
-    fontsize = 25
-    plt.ylim(0, 1.1)
-    plt.xlim(1, pred_score.shape[0]+1)
-    plt.ylabel('Probability', fontsize=fontsize)
-    plt.xlabel('Frame (FPS=20)', fontsize=fontsize)
-    plt.xticks(range(0, pred_score.shape[0]+1, 2), fontsize=fontsize)
-    plt.yticks(fontsize=fontsize)
-    # plt.grid(True)
-    plt.tight_layout()
-    return plt, fig, ax
 
 
 if __name__ == '__main__':
@@ -335,6 +307,8 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--task', type=str, default='visualize', choices=['extract_feature', 'inference', 'visualize'])
     parser.add_argument('--gpu_id', help='GPU ID', type=int, default=0)
+    parser.add_argument('--n_frames', type=int, help='The number of input video frames.', default=50)
+    parser.add_argument('--fps', type=float, help='The fps of input video.', default=10.0)
     # feature extraction
     parser.add_argument('--video_file', type=str, default='demo/000821.mp4')
     parser.add_argument('--mmdetection', type=str, help="the path to the mmdetection.", default="lib/mmdetection")
@@ -357,7 +331,7 @@ if __name__ == '__main__':
         # init feature extractor
         feat_extractor = init_feature_extractor(backbone='vgg16', device=device)
         # object detection & feature extraction
-        detections, features = extract_features(detector, feat_extractor, p.video_file, n_frames=50)
+        detections, features = extract_features(detector, feat_extractor, p.video_file, n_frames=p.n_frames)
         feat_file = p.video_file[:-4] + '_feature.npz'
         np.savez_compressed(feat_file, data=features, det=detections)
     elif p.task == 'inference':
@@ -365,7 +339,7 @@ if __name__ == '__main__':
         # load feature file
         features, labels, graph_edges, edge_weights, toa, detections, vid = load_input_data(p.feature_file, device=device)
         # prepare model
-        model = init_accident_model(p.ckpt_file, dim_feature=features.shape[-1], n_frames=50, fps=10.0)
+        model = init_accident_model(p.ckpt_file, dim_feature=features.shape[-1], n_frames=p.n_frames, fps=p.fps)
         with torch.no_grad():
             # run inference
             _, all_outputs, _ = model(features, labels, toa, graph_edges, hidden_in=None, edge_weights=edge_weights, npass=10, eval_uncertain=True)
@@ -374,40 +348,41 @@ if __name__ == '__main__':
         result_file = osp.join(osp.dirname(p.feature_file), p.feature_file.split('/')[-1].split('_')[0] + '_result.npz')
         np.savez_compressed(result_file, score=pred_score[0], aleatoric=pred_au[0], epistemic=pred_eu[0], det=detections[0])
     elif p.task == 'visualize':
-        video_data = get_video_frames(p.video_file, n_frames=50)
+        video_data = get_video_frames(p.video_file, n_frames=p.n_frames)
         all_results = np.load(p.result_file, allow_pickle=True)
         pred_score, aleatoric, epistemic, detections = all_results['score'], all_results['aleatoric'], all_results['epistemic'], all_results['det']
+        xvals, pred_score, std_alea, std_epis = preprocess_results(pred_score, aleatoric, epistemic, cumsum=False)
 
         fig, ax = plt.subplots(1, figsize=(24, 3.5))
-        # draw_curve_origin(pred_score, aleatoric, epistemic, smooth=True)
-        # plt.savefig('demo/curve.png')
+        fontsize = 25
+        plt.ylim(0, 1.1)
+        plt.xlim(0, len(xvals)+1)
+        plt.ylabel('Probability', fontsize=fontsize)
+        plt.xlabel('Frame (FPS=2)', fontsize=fontsize)
+        plt.xticks(range(0, len(xvals)+1, 2), fontsize=fontsize)
+        plt.yticks(fontsize=fontsize)
 
         from matplotlib.animation import FFMpegWriter
         curve_writer = FFMpegWriter(fps=2, metadata=dict(title='Movie Test', artist='Matplotlib',comment='Movie support!'))
         with curve_writer.saving(fig, "demo/curve_video.mp4", 100):
-            for t in range(pred_score.shape[0]):
-                draw_curve_origin(pred_score[:t], aleatoric[:t], epistemic[:t], smooth=True)
+            for t in range(len(xvals)):
+                draw_curve(xvals[:(t+1)], pred_score[:(t+1)], std_alea[:(t+1)], std_epis[:(t+1)])
                 curve_writer.grab_frame()
-        curve_frames = get_video_frames("demo/curve_video.mp4", n_frames=50)
+        curve_frames = get_video_frames("demo/curve_video.mp4", n_frames=p.n_frames)
 
         # create video writer
         video_writer = cv2.VideoWriter(p.vis_file, cv2.VideoWriter_fourcc(*'DIVX'), 2.0, (video_data[0].shape[1], video_data[0].shape[0]))
         for t, frame in enumerate(video_data):
             det_boxes = detections[t]  # 19 x 6
             for box in det_boxes:
+                if box[4] > 0:
+                    print(box[4])
                 cv2.rectangle(frame, (int(box[0]), int(box[1])), (int(box[2]), int(box[3])), (0, 255, 0), 3)
             img = curve_frames[t]
             width = frame.shape[1]
             height = int(img.shape[0] * (width / img.shape[1]))
             img = cv2.resize(img, (width, height), interpolation = cv2.INTER_AREA)
-            # layout = np.zeros_like(frame)
-            # layout[frame.shape[0]-height:frame.shape[0], :, :] = img
             frame[frame.shape[0]-height:frame.shape[0]] = cv2.addWeighted(frame[frame.shape[0]-height:frame.shape[0]], 0.3, img, 0.7, 0)
             video_writer.write(frame)
-        
-        # merge videos
-        
-
-
     else:
         print("invalid task.")
