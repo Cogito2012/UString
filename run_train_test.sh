@@ -29,8 +29,6 @@ case ${PHASE} in
       --phase train \
       --base_lr 0.0005 \
       --batch_size $BATCH_SIZE \
-      --use_mask \
-      --uncertainty_ranking \
       --gpus $GPUS \
       --output_dir $OUT_DIR
     ;;
@@ -39,12 +37,9 @@ case ${PHASE} in
       --dataset $DATA \
       --feature_name vgg16 \
       --phase test \
-      --uncertainty_ranking \
       --batch_size $BATCH_SIZE \
-      --use_mask \
       --gpus $GPUS \
       --visualize \
-      --evaluate_all \
       --output_dir $OUT_DIR \
       --model_file $OUT_DIR/$DATA/snapshot/final_model.pth
     ;;

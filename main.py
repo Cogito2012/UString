@@ -33,18 +33,14 @@ def average_losses(losses_all):
         cross_entropy += losses['cross_entropy']
         log_posterior += losses['log_posterior']
         log_prior += losses['log_prior']
-        if not p.remove_saa:
-            aux_loss += losses['auxloss']
-        if p.uncertainty_ranking:
-            rank_loss += losses['ranking']
+        aux_loss += losses['auxloss']
+        rank_loss += losses['ranking']
     losses_mean['total_loss'] = total_loss / len(losses_all)
     losses_mean['cross_entropy'] = cross_entropy / len(losses_all)
     losses_mean['log_posterior'] = log_posterior / len(losses_all)
     losses_mean['log_prior'] = log_prior / len(losses_all)
-    if not p.remove_saa:
-        losses_mean['auxloss'] = aux_loss / len(losses_all)
-    if p.uncertainty_ranking:
-        losses_mean['ranking'] = rank_loss / len(losses_all)
+    losses_mean['auxloss'] = aux_loss / len(losses_all)
+    losses_mean['ranking'] = rank_loss / len(losses_all)
     return losses_mean
 
 
@@ -61,10 +57,8 @@ def test_all(testdata_loader, model):
                     hidden_in=None, edge_weights=edge_weights, npass=10, nbatch=len(testdata_loader), testing=False)
             # make total loss
             losses['total_loss'] = p.loss_alpha * (losses['log_posterior'] - losses['log_prior']) + losses['cross_entropy']
-            if not p.remove_saa:
-                losses['total_loss'] += p.loss_beta * losses['auxloss']
-            if p.uncertainty_ranking:
-                losses['total_loss'] += p.loss_yita * losses['ranking']
+            losses['total_loss'] += p.loss_beta * losses['auxloss']
+            losses['total_loss'] += p.loss_yita * losses['ranking']
             losses_all.append(losses)
 
             num_frames = batch_xs.size()[1]
@@ -154,10 +148,8 @@ def write_scalars(logger, cur_epoch, cur_iter, losses, lr):
     cross_entropy = losses['cross_entropy'].mean()
     log_prior = losses['log_prior'].mean().item()
     log_posterior = losses['log_posterior'].mean().item()
-    if not p.remove_saa:
-        aux_loss = losses['auxloss'].mean().item()
-    if p.uncertainty_ranking:
-        rank_loss = losses['ranking'].mean().item()
+    aux_loss = losses['auxloss'].mean().item()
+    rank_loss = losses['ranking'].mean().item()
     # print info
     print('----------------------------------')
     print('epoch: %d, iter: %d' % (cur_epoch, cur_iter))
@@ -165,20 +157,16 @@ def write_scalars(logger, cur_epoch, cur_iter, losses, lr):
     print('cross_entropy = %.6f' % (cross_entropy))
     print('log_posterior = %.6f' % (log_posterior))
     print('log_prior = %.6f' % (log_prior))
-    if not p.remove_saa:
-        print('aux_loss = %.6f' % (aux_loss))
-    if p.uncertainty_ranking:
-        print('rank_loss = %.6f' % (rank_loss))
+    print('aux_loss = %.6f' % (aux_loss))
+    print('rank_loss = %.6f' % (rank_loss))
     # write to tensorboard
     logger.add_scalars("train/losses/total_loss", {'total_loss': total_loss}, cur_iter)
     logger.add_scalars("train/losses/cross_entropy", {'cross_entropy': cross_entropy}, cur_iter)
     logger.add_scalars("train/losses/log_posterior", {'log_posterior': log_posterior}, cur_iter)
     logger.add_scalars("train/losses/log_prior", {'log_prior': log_prior}, cur_iter)
     logger.add_scalars("train/losses/complexity_cost", {'complexity_cost': log_posterior-log_prior}, cur_iter)
-    if not p.remove_saa:
-        logger.add_scalars("train/losses/aux_loss", {'aux_loss': aux_loss}, cur_iter)
-    if p.uncertainty_ranking:
-        logger.add_scalars("train/losses/rank_loss", {'rank_loss': rank_loss}, cur_iter)
+    logger.add_scalars("train/losses/aux_loss", {'aux_loss': aux_loss}, cur_iter)
+    logger.add_scalars("train/losses/rank_loss", {'rank_loss': rank_loss}, cur_iter)
     # write learning rate
     logger.add_scalars("train/learning_rate/lr", {'lr': lr}, cur_iter)
 
@@ -189,9 +177,8 @@ def write_test_scalars(logger, cur_epoch, cur_iter, losses, metrics):
     cross_entropy = losses['cross_entropy'].mean()
     # write to tensorboard
     loss_info = {'total_loss': total_loss, 'cross_entropy': cross_entropy}
-    if not p.remove_saa:
-        aux_loss = losses['auxloss'].mean().item()
-        loss_info.update({'aux_loss': aux_loss})
+    aux_loss = losses['auxloss'].mean().item()
+    loss_info.update({'aux_loss': aux_loss})
     logger.add_scalars("test/losses/total_loss", loss_info, cur_iter)
     logger.add_scalars("test/accuracy/AP", {'AP': metrics['AP']}, cur_iter)
     logger.add_scalars("test/accuracy/time-to-accident", {'mTTA': metrics['mTTA'], 
@@ -265,7 +252,7 @@ def train_eval():
     # building model
     model = UString(train_data.dim_feature, p.hidden_dim, p.latent_dim, 
                        n_layers=p.num_rnn, n_obj=train_data.n_obj, n_frames=train_data.n_frames, fps=train_data.fps, 
-                       with_saa=(not p.remove_saa), uncertain_ranking=p.uncertainty_ranking, use_mask=p.use_mask)
+                       with_saa=True, uncertain_ranking=True)
 
     # optimizer
     optimizer = torch.optim.Adam(model.parameters(), lr=p.base_lr)
@@ -295,10 +282,8 @@ def train_eval():
             losses, all_outputs, hidden_st = model(batch_xs, batch_ys, batch_toas, graph_edges, edge_weights=edge_weights, npass=2, nbatch=len(traindata_loader), eval_uncertain=True)
             complexity_loss = losses['log_posterior'] - losses['log_prior']
             losses['total_loss'] = p.loss_alpha * complexity_loss + losses['cross_entropy']
-            if not p.remove_saa:
-                losses['total_loss'] += p.loss_beta * losses['auxloss']
-            if p.uncertainty_ranking:
-                losses['total_loss'] += p.loss_yita * losses['ranking']
+            losses['total_loss'] += p.loss_beta * losses['auxloss']
+            losses['total_loss'] += p.loss_yita * losses['ranking']
             # backward
             losses['total_loss'].mean().backward()
             # clip gradients
@@ -390,7 +375,7 @@ def test_eval():
     # building model
     model = UString(test_data.dim_feature, p.hidden_dim, p.latent_dim, 
                        n_layers=p.num_rnn, n_obj=test_data.n_obj, n_frames=test_data.n_frames, fps=test_data.fps, 
-                       with_saa=(not p.remove_saa), uncertain_ranking=p.uncertainty_ranking, use_mask=p.use_mask)
+                       with_saa=True, uncertain_ranking=True)
 
     # start to evaluate
     if p.evaluate_all:
@@ -467,12 +452,6 @@ if __name__ == '__main__':
                         help='The dimension of hidden states in RNN. Default: 256')
     parser.add_argument('--latent_dim', type=int, default=256,
                         help='The dimension of latent space. Default: 256')
-    parser.add_argument('--use_mask', action='store_true',
-                        help='Apply masking on input features. Default: False')
-    parser.add_argument('--remove_saa', action='store_true',
-                        help='Use self-attention aggregation layer. Default: False')
-    parser.add_argument('--uncertainty_ranking', action='store_true',
-                        help='Use uncertainty ranking loss. Default: False')
     parser.add_argument('--loss_alpha', type=float, default=0.001,
                         help='The weighting factor of posterior and prior losses. Default: 1e-3')
     parser.add_argument('--loss_beta', type=float, default=10,
