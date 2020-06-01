@@ -11,7 +11,7 @@ import argparse
 import shutil
 
 from torch.utils.data import DataLoader
-from src.GraphModels import BayesGCRNN
+from src.Models import UString
 from src.eval_tools import evaluation, print_results, vis_results
 import ipdb
 import matplotlib.pyplot as plt
@@ -263,7 +263,7 @@ def train_eval():
     testdata_loader = DataLoader(dataset=test_data, batch_size=p.batch_size, shuffle=False, drop_last=True)
     
     # building model
-    model = BayesGCRNN(train_data.dim_feature, p.hidden_dim, p.latent_dim, 
+    model = UString(train_data.dim_feature, p.hidden_dim, p.latent_dim, 
                        n_layers=p.num_rnn, n_obj=train_data.n_obj, n_frames=train_data.n_frames, fps=train_data.fps, 
                        with_saa=(not p.remove_saa), uncertain_ranking=p.uncertainty_ranking, use_mask=p.use_mask)
 
@@ -388,7 +388,7 @@ def test_eval():
     print("Number of testing samples: %d"%(num_samples))
     
     # building model
-    model = BayesGCRNN(test_data.dim_feature, p.hidden_dim, p.latent_dim, 
+    model = UString(test_data.dim_feature, p.hidden_dim, p.latent_dim, 
                        n_layers=p.num_rnn, n_obj=test_data.n_obj, n_frames=test_data.n_frames, fps=test_data.fps, 
                        with_saa=(not p.remove_saa), uncertain_ranking=p.uncertainty_ranking, use_mask=p.use_mask)
 

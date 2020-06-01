@@ -26,7 +26,7 @@ def process(data_path, dest_path, phase):
         batch_id += 1
     return files_list
 
-def reorganize(data_path, dest_path):
+def split_dad(data_path, dest_path):
     # prepare the result paths
     train_path = os.path.join(dest_path, 'training')
     if not os.path.exists(train_path):
@@ -35,9 +35,9 @@ def reorganize(data_path, dest_path):
     if not os.path.exists(test_path):
         os.makedirs(test_path)
 
-    # # process training set
-    # train_list = process(data_path, train_path, 'training')
-    # print('Training samples: %d'%(len(train_list)))
+    # process training set
+    train_list = process(data_path, train_path, 'training')
+    print('Training samples: %d'%(len(train_list)))
     # process testing set
     test_list = process(data_path, test_path, 'testing')
     print('Testing samples: %d' % (len(test_list)))
@@ -45,4 +45,4 @@ def reorganize(data_path, dest_path):
 if __name__ == '__main__':
     DAD_PATH = '/data/DAD/features'
     DEST_PATH = '/data/DAD/features_split'
-    reorganize(DAD_PATH, DEST_PATH)
+    split_dad(DAD_PATH, DEST_PATH)

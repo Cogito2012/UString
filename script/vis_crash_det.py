@@ -46,7 +46,7 @@ def vis_det(feat_path, video_path, out_path, tag='positive'):
             cv2.imwrite(os.path.join(save_dir, str(counter) + '.jpg'), frame)
 
 if __name__ == '__main__':
-    FEAT_PATH = '/data/CarCrash/res101_features/res101_pos'
-    VIDEO_PATH = '/data/CarCrash/videos/Crash-1500'
-    OUT_PATH = '/data/CarCrash/res101_features/vis_dets'
+    FEAT_PATH = './data/crash/vgg16_features/positive'
+    VIDEO_PATH = './data/crash/videos/Crash-1500'
+    OUT_PATH = './data/crash/vgg16_features/vis_dets'
     vis_det(FEAT_PATH, VIDEO_PATH, OUT_PATH, tag='positive')

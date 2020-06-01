@@ -102,38 +102,6 @@ def print_results(Epochs, APvid_all, AP_all, mTTA_all, TTA_R80_all, Unc_all, res
         for e, APvid, AP, mTTA, TTA_R80, Un in zip(Epochs, APvid_all, AP_all, mTTA_all, TTA_R80_all, Unc_all):
             f.writelines('Epoch: %s,'%(e) + ' APvid={:.3f}, AP={:.3f}, mTTA={:.3f}, TTA_R80={:.3f}, mAU={:.5f}, mEU={:.5f}\n'.format(APvid, AP, mTTA, TTA_R80, Un[0], Un[1]))
     f.close()
-    
-
-# def vis_results(vis_data, batch_size, vis_dir):
-#     for results in vis_data:
-#         pred_frames = results['pred_frames']
-#         labels = results['label']
-#         toa = results['toa']
-#         video_ids = results['video_ids']
-#         detections = results['detections']
-#         uncertainties = results['pred_uncertain']
-#         for n in range(batch_size):
-#             if labels[n] == 1:
-#                 pred_mean = pred_frames[n, :]  # (90,)
-#                 pred_std_alea = 1.0 * np.sqrt(uncertainties[n, :, 0])
-#                 pred_std_epis = 1.0 * np.sqrt(uncertainties[n, :, 1])
-#                 # plot the probability predictions
-#                 fig, ax = plt.subplots(1, figsize=(14, 5))
-#                 ax.fill_between(range(1, len(pred_mean)+1), pred_mean - pred_std_alea, pred_mean + pred_std_alea, facecolor='wheat', alpha=0.5)
-#                 ax.fill_between(range(1, len(pred_mean)+1), pred_mean - pred_std_epis, pred_mean + pred_std_epis, facecolor='yellow', alpha=0.5)
-#                 plt.plot(range(1, len(pred_mean)+1), pred_mean, linewidth=3.0)
-#                 plt.axvline(x=toa[n], ymax=1.0, linewidth=3.0, color='r', linestyle='--')
-#                 fontsize = 18
-#                 plt.ylim(0, 1)
-#                 plt.xlim(1, 100)
-#                 plt.ylabel('Probability', fontsize=fontsize)
-#                 plt.xlabel('Frame (FPS=20)', fontsize=fontsize)
-#                 plt.xticks(fontsize=fontsize)
-#                 plt.yticks(fontsize=fontsize)
-#                 plt.grid(True)
-#                 plt.tight_layout()
-#                 plt.savefig(os.path.join(vis_dir, video_ids[n] + '.png'))
-#                 plt.close()
 
 
 def vis_results(vis_data, batch_size, vis_dir, smooth=False, vis_batchnum=2):

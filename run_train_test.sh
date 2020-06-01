@@ -23,7 +23,7 @@ OUT_DIR=output_master/UString/vgg16
 # experiments on DAD dataset
 case ${PHASE} in
   train)
-    CUDA_VISIBLE_DEVICES=$GPUS python BayesGCRNN_accident.py \
+    CUDA_VISIBLE_DEVICES=$GPUS python main.py \
       --dataset $DATA \
       --feature_name vgg16 \
       --phase train \
@@ -35,7 +35,7 @@ case ${PHASE} in
       --output_dir $OUT_DIR
     ;;
   test)
-    CUDA_VISIBLE_DEVICES=$GPUS python BayesGCRNN_accident.py \
+    CUDA_VISIBLE_DEVICES=$GPUS python main.py \
       --dataset $DATA \
       --feature_name vgg16 \
       --phase test \

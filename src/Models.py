@@ -212,9 +212,9 @@ class GCNConv(MessagePassing):
 
 
 
-class graph_gru_gcn(nn.Module):
+class Graph_GRU_GCN(nn.Module):
     def __init__(self, input_size, hidden_size, n_layer, bias=True):
-        super(graph_gru_gcn, self).__init__()
+        super(Graph_GRU_GCN, self).__init__()
 
         self.hidden_size = hidden_size
         self.n_layer = n_layer
@@ -361,102 +361,9 @@ class BayesianPredictor(nn.Module):
         return output_dict
 
 
-# GCRNN model
-class GCRNN(nn.Module):
-    def __init__(self, x_dim, h_dim, z_dim, n_layers=1, n_obj=19, n_frames=100, fps=20.0):
-        super(GCRNN, self).__init__()
-
-        self.x_dim = x_dim
-        self.h_dim = h_dim
-        self.z_dim = z_dim
-        self.n_layers = n_layers
-        self.n_obj = n_obj
-        self.n_frames = n_frames
-        self.fps = fps
-
-        self.phi_x = nn.Sequential(nn.Linear(x_dim, h_dim), nn.ReLU())
-
-        self.enc_gcn1 = GCNConv(h_dim + h_dim, h_dim)
-        self.enc_gcn2 = GCNConv(h_dim + h_dim, z_dim, act=lambda x: x)
-
-        self.rnn = graph_gru_gcn(h_dim + h_dim + z_dim, h_dim, n_layers, bias=True)
-
-        self.predictor = AccidentPredictor(n_obj * z_dim, 2, dropout=[0.5, 0.1])
-        self.ce_loss = torch.nn.CrossEntropyLoss(reduction='none')
-
-        self.self_aggregation = SelfAttAggregate(self.n_frames)
-        self.predictor_aux = AccidentPredictor(h_dim + h_dim, 2, dropout=[0.5, 0.0])
-
-
-    def forward(self, x, y, edge_idx, hidden_in=None, edge_weights=None):
-        """
-        :param x, (batchsize, nFrames, nBoxes, Xdim) = (10, 100, 20, 4096)
-        """
-        acc_loss = 0
-        all_dec, all_hidden = [], []
-
-        # import ipdb; ipdb.set_trace()
-        if hidden_in is None:
-            h = Variable(torch.zeros(self.n_layers, x.size(0), self.n_obj, self.h_dim))  # 1 x 10 x 19 x 256
-        else:
-            h = Variable(hidden_in)
-        h = h.to(x.device)
-
-        for t in range(x.size(1)):
-            # reduce the dim of node feature (FC layer)
-            x_t = self.phi_x(x[:, t])  # 10 x 20 x 256
-            img_embed = x_t[:, 0, :].unsqueeze(1).repeat(1, self.n_obj, 1).contiguous()  # 10 x 19 x 256
-            x_t = torch.cat([x_t[:, 1:, :], img_embed], dim=-1)  # 10 x 19 x 512
-
-            # GCN encoder
-            enc = self.enc_gcn1(x_t, edge_idx[:, t], edge_weight=edge_weights[:, t])  # 10 x 19 x 256 (512-->256)
-            z_t = self.enc_gcn2(torch.cat([enc, h[-1]], -1), edge_idx[:, t], edge_weight=edge_weights[:, t])  # 10 x 19 x 256 (512-->256)
-            
-            # decoder
-            embed = z_t.view(z_t.size(0), -1)  # 10 x (19 x 256)
-            dec_t = self.predictor(embed)  # B x 2
-
-            # recurrence
-            h = self.rnn(torch.cat([x_t, z_t], 2), edge_idx[:, t], h, edge_weight=edge_weights[:, t])  # 640-->256
-
-            # computing losses
-            acc_loss += self._exp_loss(dec_t, y, t, frames=self.n_frames, fps=self.fps)
-
-            all_dec.append(dec_t)
-            all_hidden.append(h[-1])
-
-        # soft attention to aggregate hidden states of all frames
-        embed_video = self.self_aggregation(torch.stack(all_hidden, dim=-1))
-        dec = self.predictor_aux(embed_video)
-        aux_loss = self.ce_loss(dec, y[:, 1].to(torch.long))
-
-        return acc_loss, aux_loss, all_dec, all_hidden
-
-
-    def _exp_loss(self, pred, target, time, frames=100, fps=20.0):
-        '''
-        :param pred:
-        :param target: onehot codings for binary classification
-        :param time:
-        :param frames:
-        :param fps:
-        :return:
-        '''
-        # positive example (exp_loss)
-        target_cls = target[:, 1]
-        target_cls = target_cls.to(torch.long)
-        pos_loss = -torch.mul(torch.exp(-torch.tensor((frames - time - 1) / fps)),
-                              -self.ce_loss(pred, target_cls))
-        # negative example
-        neg_loss = self.ce_loss(pred, target_cls)
-
-        loss = torch.mean(torch.add(torch.mul(pos_loss, target[:, 1]), torch.mul(neg_loss, target[:, 0])))
-        return loss
-
-
-class BayesGCRNN(nn.Module):
+class UString(nn.Module):
     def __init__(self, x_dim, h_dim, z_dim, n_layers=1, n_obj=19, n_frames=100, fps=20.0, with_saa=True, uncertain_ranking=False, use_mask=False):
-        super(BayesGCRNN, self).__init__()
+        super(UString, self).__init__()
 
         self.x_dim = x_dim
         self.h_dim = h_dim  # 512 (-->256)
@@ -475,7 +382,7 @@ class BayesGCRNN(nn.Module):
         self.enc_gcn1 = GCNConv(h_dim + h_dim, h_dim)
         self.enc_gcn2 = GCNConv(h_dim + h_dim, z_dim, act=lambda x: x)
         # rnn layer
-        self.rnn = graph_gru_gcn(h_dim + h_dim + z_dim, h_dim, n_layers, bias=True)
+        self.rnn = Graph_GRU_GCN(h_dim + h_dim + z_dim, h_dim, n_layers, bias=True)
         # BNN decoder
         self.predictor = BayesianPredictor(n_obj * z_dim, 2)
         if self.with_saa:

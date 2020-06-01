@@ -132,7 +132,7 @@ def extract_features(detector, feat_extractor, video_file, n_frames=100, n_boxes
 
 def init_accident_model(model_file, dim_feature=4096, hidden_dim=256, latent_dim=256, n_obj=19, n_frames=50, fps=10.0):
     # building model
-    model = BayesGCRNN(dim_feature, hidden_dim, latent_dim, 
+    model = UString(dim_feature, hidden_dim, latent_dim, 
         n_layers=1, n_obj=n_obj, n_frames=n_frames, fps=fps, with_saa=True, uncertain_ranking=True, use_mask=False)
     model = model.to(device=device)
     model.eval()
@@ -335,7 +335,7 @@ if __name__ == '__main__':
         feat_file = p.video_file[:-4] + '_feature.npz'
         np.savez_compressed(feat_file, data=features, det=detections)
     elif p.task == 'inference':
-        from src.GraphModels import BayesGCRNN
+        from src.Models import UString
         # load feature file
         features, labels, graph_edges, edge_weights, toa, detections, vid = load_input_data(p.feature_file, device=device)
         # prepare model
