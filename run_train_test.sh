@@ -18,7 +18,7 @@ LOG="${LOG_DIR}/${PHASE}_`date +'%Y-%m-%d_%H-%M'`.log"
 exec &> >(tee -a "$LOG")
 echo Logging output to "$LOG"
 
-OUT_DIR=output_master/UString/vgg16
+OUT_DIR=output/UString/vgg16
 
 # experiments on DAD dataset
 case ${PHASE} in
