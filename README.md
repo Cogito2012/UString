@@ -22,7 +22,7 @@ We propose an uncertainty-based traffic accident anticipation model for dashboar
 <a name="dataset"></a>
 ## :file_cabinet:  Dataset Preparation
 
-The code currently supports three different datasets., DAD, A3D, and CCD. These datasets need to be prepared under the folder `data/`. 
+The code currently supports three datasets., DAD, A3D, and CCD. These datasets need to be prepared under the folder `data/`. 
 
 > * For CCD dataset, please refer to the [CarCrashDataset](https://github.com/Cogito2012/CarCrashDataset) repo for downloading and deployment. 
 > * For DAD dataset, you can acquire it from [DAD official](https://github.com/smallcorgi/Anticipating-Accidents). The officially provided features are grouped into batches while it is more standard to split them into separate files for training and testing. To this end, you can use the script `./script/split_dad.py`. 
@@ -114,4 +114,4 @@ Please cite our paper if you find our code useful.
 }
 ```
 
-If you have any questions, please feel free to leave issues in this repo or contact [Wentao Bao](mailto:wb6219@rit.edu) by email.
+If you have any questions, please feel free to leave issues in this repo or contact [Wentao Bao](mailto:wb6219@rit.edu) by email. Note that part of codes in `src/` are referred from [VGRNN](https://github.com/VGraphRNN/VGRNN) project.
