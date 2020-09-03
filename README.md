@@ -64,7 +64,20 @@ conda create -n mmlab python=3.7
 conda activate mmlab
 
 # install dependencies
+pip install torch==1.4.0+cu100 torchvision==0.5.0+cu100 -f https://download.pytorch.org/whl/torch_stable.html
+pip install mmcv-full==1.1.1
+
 # Follow the instructions at https://github.com/open-mmlab/mmdetection/blob/master/docs/install.md
+git clone https://github.com/open-mmlab/mmdetection.git
+cd mmdetection
+git checkout v1.1.0  # important!
+cp -r ../Cascade\ R-CNN/* ./  # copy the downloaded files into mmdetection folder
+
+# compile & install
+pip install -v -e .
+python setup.py install
+
+# Then you are all set!
 ```
 
 
