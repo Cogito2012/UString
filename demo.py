@@ -133,7 +133,7 @@ def extract_features(detector, feat_extractor, video_file, n_frames=100, n_boxes
 def init_accident_model(model_file, dim_feature=4096, hidden_dim=256, latent_dim=256, n_obj=19, n_frames=50, fps=10.0):
     # building model
     model = UString(dim_feature, hidden_dim, latent_dim, 
-        n_layers=1, n_obj=n_obj, n_frames=n_frames, fps=fps, with_saa=True, uncertain_ranking=True, use_mask=False)
+        n_layers=1, n_obj=n_obj, n_frames=n_frames, fps=fps, with_saa=True, uncertain_ranking=True)
     model = model.to(device=device)
     model.eval()
     # load check point
@@ -358,7 +358,7 @@ if __name__ == '__main__':
         plt.ylim(0, 1.1)
         plt.xlim(0, len(xvals)+1)
         plt.ylabel('Probability', fontsize=fontsize)
-        plt.xlabel('Frame (FPS=2)', fontsize=fontsize)
+        plt.xlabel('Frame (FPS=%d)'%(p.fps), fontsize=fontsize)
         plt.xticks(range(0, len(xvals)+1, 2), fontsize=fontsize)
         plt.yticks(fontsize=fontsize)
 

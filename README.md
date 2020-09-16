@@ -65,7 +65,7 @@ conda activate mmlab
 
 # install dependencies
 pip install torch==1.4.0+cu100 torchvision==0.5.0+cu100 -f https://download.pytorch.org/whl/torch_stable.html
-pip install mmcv-full==1.1.1
+pip install mmcv==0.4.2
 
 # Follow the instructions at https://github.com/open-mmlab/mmdetection/blob/master/docs/install.md
 git clone https://github.com/open-mmlab/mmdetection.git
@@ -79,14 +79,14 @@ python setup.py install
 
 # Then you are all set!
 ```
-
+**Note**: This repo currently does not support `CUDA>=10.2` environment, as the object detection API we used is no longer supported only by the latest `mmdetection`, and the `torch-geometry` lib we sued is dependent on `PyTorch=1.0`. We will release the support for the lastest CUDA and PyTorch. 
 
 <a name="traintest"></a>
 ## :rocket: Train and Test
 
 ### 1. Demo
 
-We provide an end-to-end demo to predict accident curves with given video. Note that before you run the following script, both the python and mmdetection environments above are needed.
+We provide an end-to-end demo to predict accident curves with given video. Note that before you run the following script, both the python and mmdetection environments above are needed. The following command is an example using the pretrained model on CCD dataset. The model file is placed at `demo/final_model_ccd.pth` by default.
 
 ```shell
 bash run_demo.sh demo/000821.mp4
@@ -121,8 +121,8 @@ Please cite our paper if you find our code useful.
 @InProceedings{BaoMM2020,
     author = {Bao, Wentao and Yu, Qi and Kong, Yu},
     title  = {Uncertainty-based Traffic Accident Anticipation with Spatio-Temporal Relational Learning},
-    booktitle = {ACM Multimedia Conference},
-    month  = {May},
+    booktitle = {Proceedings of the 28th ACM International Conference on Multimedia (MM ’20)},
+    month  = {October},
     year   = {2020}
 }
 ```
