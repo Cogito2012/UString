@@ -5,7 +5,7 @@ torch_scatter==1.4.0
 torch_cluster==1.4.5
 torch_sparse==0.4.3
 tensorboardX==2.0
-tensorflow==2.1.0
+tensorflow==2.1.2
 tensorflow_gpu==1.15.4
 mmcv==0.5.5
 tqdm==4.35.0
