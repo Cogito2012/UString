@@ -23,7 +23,7 @@ ipdb==0.12.3
 ipython==7.13.0
 Pillow==7.1.1
 pycocotools==2.0.0
-PyYAML==5.3.1
+PyYAML==5.4
 scikit-image==0.15.0
 imageio==2.5.0
 youtube-dl==2019.11.28
