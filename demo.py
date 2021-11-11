@@ -344,7 +344,7 @@ if __name__ == '__main__':
             # run inference
             _, all_outputs, _ = model(features, labels, toa, graph_edges, hidden_in=None, edge_weights=edge_weights, npass=10, eval_uncertain=True)
         # parse and save results
-        pred_score, pred_au, pred_eu = parse_results(all_outputs)
+        pred_score, pred_au, pred_eu = parse_results(all_outputs, n_frames=p.n_frames)
         result_file = osp.join(osp.dirname(p.feature_file), p.feature_file.split('/')[-1].split('_')[0] + '_result.npz')
         np.savez_compressed(result_file, score=pred_score[0], aleatoric=pred_au[0], epistemic=pred_eu[0], det=detections[0])
     elif p.task == 'visualize':
