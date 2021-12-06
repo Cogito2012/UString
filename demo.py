@@ -302,12 +302,22 @@ def draw_curve(xvals, pred_score, std_alea, std_epis):
     plt.tight_layout()
 
 
+def set_random_seed(seed):
+    torch.manual_seed(seed)
+    torch.cuda.manual_seed(seed)
+    torch.cuda.manual_seed_all(seed)  # if you are using multi-GPU.
+    np.random.seed(seed)  # Numpy module.
+    torch.backends.cudnn.benchmark = True
+    torch.backends.cudnn.deterministic = True
+
+
 if __name__ == '__main__':
 
     parser = argparse.ArgumentParser()
     parser.add_argument('--task', type=str, default='visualize', choices=['extract_feature', 'inference', 'visualize'])
     parser.add_argument('--gpu_id', help='GPU ID', type=int, default=0)
     parser.add_argument('--n_frames', type=int, help='The number of input video frames.', default=50)
+    parser.add_argument('--seed', type=int, help='The random seed.', default=123)
     parser.add_argument('--fps', type=float, help='The fps of input video.', default=10.0)
     # feature extraction
     parser.add_argument('--video_file', type=str, default='demo/000821.mp4')
@@ -319,6 +329,8 @@ if __name__ == '__main__':
     parser.add_argument('--result_file', type=str, help="the path to the result file.", default="demo/000821_result.npz")
     parser.add_argument('--vis_file', type=str, help="the path to the visualization file.", default="demo/000821_vis.avi")
     p = parser.parse_args()
+
+    set_random_seed(p.seed)
 
     device = torch.device('cuda:'+str(p.gpu_id)) if torch.cuda.is_available() else torch.device('cpu')
     if p.task == 'extract_feature':
