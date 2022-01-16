@@ -133,7 +133,7 @@ def extract_features(detector, feat_extractor, video_file, n_frames=100, n_boxes
 def init_accident_model(model_file, dim_feature=4096, hidden_dim=256, latent_dim=256, n_obj=19, n_frames=50, fps=10.0):
     # building model
     model = UString(dim_feature, hidden_dim, latent_dim, 
-        n_layers=1, n_obj=n_obj, n_frames=n_frames, fps=fps, with_saa=True, uncertain_ranking=True)
+        n_layers=1, n_obj=n_obj, n_frames=n_frames, fps=fps, with_saa=False, uncertain_ranking=True)
     model = model.to(device=device)
     model.eval()
     # load check point
@@ -219,7 +219,10 @@ def load_checkpoint(model, optimizer=None, filename='checkpoint.pth.tar', isTrai
     if os.path.isfile(filename):
         checkpoint = torch.load(filename)
         start_epoch = checkpoint['epoch']
-        model.load_state_dict(checkpoint['model'])
+        # filter out modules only used in training
+        pretrained_dict = {k: v for k, v in checkpoint['model'].items() if not any(filtered in k for filtered in ['self_aggregation', 'predictor_aux'])}
+        model.load_state_dict(pretrained_dict)
+        # model.load_state_dict(checkpoint['model'])
         if isTraining:
             optimizer.load_state_dict(checkpoint['optimizer'])
         # print("=> loaded checkpoint '{}' (epoch {})".format(filename, checkpoint['epoch']))
@@ -319,6 +322,7 @@ if __name__ == '__main__':
     parser.add_argument('--n_frames', type=int, help='The number of input video frames.', default=50)
     parser.add_argument('--seed', type=int, help='The random seed.', default=123)
     parser.add_argument('--fps', type=float, help='The fps of input video.', default=10.0)
+    parser.add_argument('--fps_display', type=float, help='The fps of output video.', default=2.0)
     # feature extraction
     parser.add_argument('--video_file', type=str, default='demo/000821.mp4')
     parser.add_argument('--mmdetection', type=str, help="the path to the mmdetection.", default="lib/mmdetection")
@@ -371,11 +375,11 @@ if __name__ == '__main__':
         plt.xlim(0, len(xvals)+1)
         plt.ylabel('Probability', fontsize=fontsize)
         plt.xlabel('Frame (FPS=%d)'%(p.fps), fontsize=fontsize)
-        plt.xticks(range(0, len(xvals)+1, 2), fontsize=fontsize)
+        plt.xticks(range(0, len(xvals)+1, int(p.n_frames / p.fps_display)), fontsize=fontsize)
         plt.yticks(fontsize=fontsize)
 
         from matplotlib.animation import FFMpegWriter
-        curve_writer = FFMpegWriter(fps=2, metadata=dict(title='Movie Test', artist='Matplotlib',comment='Movie support!'))
+        curve_writer = FFMpegWriter(fps=p.fps_display, metadata=dict(title='Movie Test', artist='Matplotlib',comment='Movie support!'))
         with curve_writer.saving(fig, "demo/curve_video.mp4", 100):
             for t in range(len(xvals)):
                 draw_curve(xvals[:(t+1)], pred_score[:(t+1)], std_alea[:(t+1)], std_epis[:(t+1)])
@@ -383,7 +387,7 @@ if __name__ == '__main__':
         curve_frames = get_video_frames("demo/curve_video.mp4", n_frames=p.n_frames)
 
         # create video writer
-        video_writer = cv2.VideoWriter(p.vis_file, cv2.VideoWriter_fourcc(*'DIVX'), 2.0, (video_data[0].shape[1], video_data[0].shape[0]))
+        video_writer = cv2.VideoWriter(p.vis_file, cv2.VideoWriter_fourcc(*'DIVX'), p.fps_display, (video_data[0].shape[1], video_data[0].shape[0]))
         for t, frame in enumerate(video_data):
             det_boxes = detections[t]  # 19 x 6
             for box in det_boxes:
