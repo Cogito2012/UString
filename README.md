@@ -26,15 +26,15 @@ The code currently supports three datasets., DAD, A3D, and CCD. These datasets n
 
 > * For CCD dataset, please refer to the [CarCrashDataset](https://github.com/Cogito2012/CarCrashDataset) repo for downloading and deployment. 
 > * For DAD dataset, you can acquire it from [DAD official](https://github.com/smallcorgi/Anticipating-Accidents). The officially provided features are grouped into batches while it is more standard to split them into separate files for training and testing. To this end, you can use the script `./script/split_dad.py`. 
-> * For A3D dataset, the annotations and videos are obtained from [A3D official](https://github.com/MoonBlvd/tad-IROS2019). Since it is sophiscated to process it for traffic accident anticipation with the same setting as DAD, you can directly download our processed A3D dataset from Google Drive: [A3D processed](https://drive.google.com/drive/folders/1loK_Cr1UHZGJpetUIQCSI3NlBQWynK3v?usp=sharing).
+> * For A3D dataset, the annotations and videos are obtained from [A3D official](https://github.com/MoonBlvd/tad-IROS2019). Since it is sophiscated to process it for traffic accident anticipation with the same setting as DAD, you can directly download our processed A3D dataset from Google Drive: [A3D processed](https://drive.google.com/drive/folders/1lnuJ0blnSSSL-BfMW-9mmRJ713UJAxku?usp=sharing).
 
 <a name="models"></a>
 ## :file_cabinet:  Pre-trained Models
 
 Choose the following files according to your need.
 
-> * [**Cascade R-CNN**](https://drive.google.com/drive/folders/1fbjKrzgXv_FobuIAS37k9beCkxYzVavi?usp=sharing): The pre-trained Cascade R-CNN model files and modified source files. Please download and extract them under `lib/mmdetection/`.
-> * [**Pre-trained UString Models**](https://drive.google.com/drive/folders/1yUJnxwDtn2JGDOf_weVMDOwywdkWULG2?usp=sharing): The pretrained model weights for testing and demo usages. Download them and put them anywhere you like.
+> * [**Cascade R-CNN**](https://drive.google.com/drive/folders/1vUz3HYoAFeu0qGQy7pe51oa41zd0OCQU?usp=sharing): The pre-trained Cascade R-CNN model files and modified source files. Please download and extract them under `lib/mmdetection/`.
+> * [**Pre-trained UString Models**](https://drive.google.com/drive/folders/1YaZMXyyl1MVptamu66zrjfLd4doYhi63?usp=sharing): The pretrained model weights for testing and demo usages. Download them and put them anywhere you like.
 
 <a name="install"></a>
 ## :file_cabinet: Installation Guide
